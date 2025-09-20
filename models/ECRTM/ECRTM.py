@@ -3,6 +3,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from .ECR import ECR
+from utils.configs import Configs as cfg
+import json
 
 
 class ECRTM(nn.Module):
@@ -14,9 +16,16 @@ class ECRTM(nn.Module):
     def __init__(self, vocab_size, num_topics=50, en_units=200, dropout=0., pretrained_WE=None, embed_size=200, beta_temp=0.2, weight_loss_ECR=100.0, sinkhorn_alpha=20.0, sinkhorn_max_iter=1000):
         super().__init__()
 
+        self.is_finetuing = True
+        self.device = cfg.DEVICE
         self.vocab_size = vocab_size
         self.num_topics = num_topics
         self.beta_temp = beta_temp
+        
+        self.beta_ref_path = cfg.BETA_REF_PATH
+        self.beta_ref = torch.from_numpy(np.load(self.beta_ref_path)).float().to(self.device)
+        self.beta_ref.requires_grad = False
+        self.reference_dataset_path = cfg.REFERENCE_DATASET_PATH
 
         self.a = 1 * np.ones((1, num_topics)).astype(np.float32)
         self.mu2 = nn.Parameter(torch.as_tensor((np.log(self.a).T - np.mean(np.log(self.a), 1)).T))
@@ -99,28 +108,76 @@ class ECRTM(nn.Module):
         cost = self.pairwise_euclidean_distance(self.topic_embeddings, self.word_embeddings)
         loss_ECR = self.ECR(cost)
         return loss_ECR
+    
+    def get_loss_DPO(self):
+        beta = self.get_beta()
+        beta_ref = self.beta_ref
+        # Debug
+        print(f"Loaded beta_ref shape: {beta_ref.shape}")
+        
+        loss_DPO = []
+        with open(self.reference_dataset_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                data = json.loads(line)
+                k = data['k']
+                w_plus_indices = data['w_plus_indices']
+                w_minus_indices = data['w_minus_indices']
+                
+                for w_minus_idx in w_minus_indices:
+                    for w_plus_idx in w_plus_indices:
+                        delta = beta[k, w_plus_idx] - beta[k, w_minus_idx]
+                        delta_ref = beta_ref[k, w_plus_idx] - beta_ref[k, w_minus_idx]
+                        loss_DPO_sample = -F.logsigmoid(delta - delta_ref)
+                        loss_DPO.append(loss_DPO_sample)
+        
+        return torch.stack(loss_DPO).mean()
 
     def pairwise_euclidean_distance(self, x, y):
         cost = torch.sum(x ** 2, axis=1, keepdim=True) + torch.sum(y ** 2, dim=1) - 2 * torch.matmul(x, y.t())
         return cost
 
     def forward(self, input):
-        bow = input["data"]
-        theta, loss_KL = self.encode(input['data'])
-        beta = self.get_beta()
+        if not self.is_finetuing:
+            bow = input["data"]
+            theta, loss_KL = self.encode(input['data'])
+            beta = self.get_beta()
 
-        recon = F.softmax(self.decoder_bn(torch.matmul(theta, beta)), dim=-1)
-        recon_loss = -(bow * recon.log()).sum(axis=1).mean()
+            recon = F.softmax(self.decoder_bn(torch.matmul(theta, beta)), dim=-1)
+            recon_loss = -(bow * recon.log()).sum(axis=1).mean()
 
-        loss_TM = recon_loss + loss_KL
+            loss_TM = recon_loss + loss_KL
 
-        loss_ECR = self.get_loss_ECR()
-        loss = loss_TM + loss_ECR
+            loss_ECR = self.get_loss_ECR()
+            loss = loss_TM + loss_ECR
 
-        rst_dict = {
-            'loss': loss,
-            'loss_TM': loss_TM,
-            'loss_ECR': loss_ECR
-        }
+            rst_dict = {
+                'loss': loss,
+                'loss_TM': loss_TM,
+                'loss_ECR': loss_ECR
+            }
 
-        return rst_dict
+            return rst_dict
+        else:
+            bow = input["data"]
+            theta, loss_KL = self.encode(input['data'])
+            beta = self.get_beta()
+
+            recon = F.softmax(self.decoder_bn(torch.matmul(theta, beta)), dim=-1)
+            recon_loss = -(bow * recon.log()).sum(axis=1).mean()
+
+            loss_TM = recon_loss + loss_KL
+
+            loss_ECR = self.get_loss_ECR()
+            
+            loss_DPO = self.get_loss_DPO()
+            
+            loss = loss_TM + loss_ECR + loss_DPO
+
+            rst_dict = {
+                'loss': loss,
+                'loss_TM': loss_TM,
+                'loss_ECR': loss_ECR,
+                'loss_DPO': loss_DPO
+            }
+
+            return rst_dict

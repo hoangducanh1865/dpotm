@@ -6,6 +6,7 @@ import datasethandler
 import scipy
 import torch
 import wandb
+from dotenv import load_dotenv
 from models.ECRTM.ECRTM import ECRTM
 from models.FASTOPIC.FASTOPIC import FASTOPIC
 from models.NSTM.NSTM import NSTM
@@ -13,6 +14,7 @@ from models.CTM import CTM
 from models.ETM import ETM
 from models.ProdLDA import ProdLDA
 from models.WETE import WeTe
+from utils.preference_dataset_creator import PreferenceDatasetCreator
 from utils import config, log, miscellaneous, seed
 
 
@@ -20,6 +22,8 @@ RESULT_DIR = 'results'
 DATA_DIR = 'datasets'
 
 if __name__ == "__main__":
+    load_dotenv()
+    
     parser = config.new_parser()
     config.add_dataset_argument(parser)
     config.add_model_argument(parser)
@@ -135,8 +139,10 @@ if __name__ == "__main__":
         train_theta = np.asarray(train_theta.cpu())
         test_theta = np.asarray(test_theta.cpu())
     else:
-        if args.checkpoint_file_path is not None:
-            trainer.load_checkpoint(args.checkpoint_file_path)
+        if args.checkpoint_path is not None:
+            trainer.load_checkpoint(args.checkpoint_path)
+            beta = trainer.save_beta(current_run_dir)
+            train_theta, test_theta = trainer.save_theta(dataset, current_run_dir)
         else:
             trainer.train(dataset)
             # save beta, theta and top words
@@ -272,11 +278,19 @@ if __name__ == "__main__":
 
     wandb.finish()
 
-    '''
     preference_dataset_creator = PreferenceDatasetCreator(current_run_dir)
     preference_dataset_creator.create()
-    preference_dataset_creator.save()
     
-    finetuner = DPOFinetuner(preference_dataset_creator.preference_dataset_path)
+    '''
+    finetuner = DPOFinetuner(model, epochs=args.epochs,
+                             learning_rate=args.lr,
+                             batch_size=args.batch_size,
+                             lr_scheduler=args.lr_scheduler,
+                             lr_step_size=args.lr_step_size,
+                             device=args.device,
+                             preference_dataset_path=preference_dataset_creator.preference_dataset_path)
+    finetuner.load_checkpoint(checkpoint_path=args.checkpoint_path)
     finetuner.finetune() # included save checkpoint
+    beta = finetuner.save_beta(current_run_dir)
+    train_theta, test_theta = finetuner.save_theta(dataset, current_run_dir)
     '''

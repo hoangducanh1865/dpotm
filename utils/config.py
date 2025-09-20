@@ -32,7 +32,7 @@ def add_model_argument(parser):
     parser.add_argument('--beta_temp', type=float, default=0.2)
     parser.add_argument('--weight_ECR', type=float, default=100.0)
     parser.add_argument('--use_pretrainWE', action='store_true',
-                        default=False, help='Enable use_pretrainWE mode')
+                        default=True, help='Enable use_pretrainWE mode')
 
 def add_wete_argument(parser):
     parser.add_argument('--glove', type=str, default='glove.6B.100d.txt', help='embedding model name')
@@ -62,7 +62,7 @@ def add_eval_argument(parser):
 
 
 def add_checkpoint_argument(parser):
-    parser.add_argument('--checkpoint_file_path', type=str, default=None,
+    parser.add_argument('--checkpoint_path', type=str, default=cfg.CHECKPOINT_PATH,
                         help='Path to checkpoint file to resume training')
     
     
