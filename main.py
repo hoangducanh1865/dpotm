@@ -44,7 +44,8 @@ if __name__ == "__main__":
     
     logger = log.setup_logger(
         'main', os.path.join(current_run_dir, 'main.log'))
-    wandb.login(key="bc4d85b809d100796d00d014b47680a673dbf4e9")
+    wandb_api_key = os.getenv('WANDB_API_KEY')
+    wandb.login(key=wandb_api_key)
     wandb.init(project=prj, config=args)
     wandb.log({'time_stamp': current_time})
 
