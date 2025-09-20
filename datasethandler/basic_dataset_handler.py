@@ -141,20 +141,37 @@ class BasicDatasetHandler:
                     test_dataset, batch_size=batch_size, shuffle=False)
 
     def load_data(self, path, read_labels):
-
-        self.train_bow = scipy.sparse.load_npz(
-            f'{path}/train_bow.npz').toarray().astype('float32')
+        
+        # Try different file naming conventions
+        try:
+            self.train_bow = scipy.sparse.load_npz(
+                f'{path}/train_bow.npz').toarray().astype('float32')
+        except FileNotFoundError:
+            self.train_bow = scipy.sparse.load_npz(
+                f'{path}/bow.npz').toarray().astype('float32')
+            
         self.test_bow = scipy.sparse.load_npz(
             f'{path}/test_bow.npz').toarray().astype('float32')
         self.pretrained_WE = scipy.sparse.load_npz(
             f'{path}/word_embeddings.npz').toarray().astype('float32')
 
-        self.train_texts = file_utils.read_text(f'{path}/train_texts.txt')
-        self.test_texts = file_utils.read_text(f'{path}/test_texts.txt')
+        try:
+            self.train_texts = file_utils.read_text(f'{path}/train_texts.txt')
+        except FileNotFoundError:
+            self.train_texts = file_utils.read_text(f'{path}/texts.txt')
+            
+        try:
+            self.test_texts = file_utils.read_text(f'{path}/test_texts.txt')
+        except FileNotFoundError:
+            self.test_texts = file_utils.read_text(f'{path}/test_texts.txt')
 
         if read_labels:
-            self.train_labels = np.loadtxt(
-                f'{path}/train_labels.txt', dtype=int)
+            try:
+                self.train_labels = np.loadtxt(
+                    f'{path}/train_labels.txt', dtype=int)
+            except FileNotFoundError:
+                self.train_labels = np.loadtxt(
+                    f'{path}/labels.txt', dtype=int)
             self.test_labels = np.loadtxt(f'{path}/test_labels.txt', dtype=int)
 
         self.vocab = file_utils.read_text(f'{path}/vocab.txt')

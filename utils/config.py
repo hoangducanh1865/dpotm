@@ -7,7 +7,7 @@ def new_parser(name=None):
 
 def add_dataset_argument(parser):
     parser.add_argument('--dataset', type=str,
-                        help='dataset name', default='YahooAnswers')
+                        help='dataset name', default='StackOverflow')
     parser.add_argument('--plm_model', type=str,
                         help='plm model name', default='all-mpnet-base-v2')
     
@@ -16,7 +16,7 @@ def add_logging_argument(parser):
 
 
 def add_model_argument(parser):
-    parser.add_argument('--model', type=str, default='ZTM', help='model name')
+    parser.add_argument('--model', type=str, default='ECRTM')
     parser.add_argument('--num_topics', type=int, default=50)
     parser.add_argument('--num_groups', type=int, default=20)
     parser.add_argument('--dropout', type=float, default=0.2)
@@ -48,7 +48,7 @@ def add_training_argument(parser):
                         help='batch size')
     parser.add_argument('--lr', type=float, default=0.002,
                         help='learning rate')
-    parser.add_argument('--device', type=str, default='cuda',
+    parser.add_argument('--device', type=str, default='cpu',
                         help='device to run the model, cuda or cpu')
     parser.add_argument('--seed', type=int, default=0, help='random seed')
     parser.add_argument('--lr_scheduler', type=str,
@@ -61,6 +61,11 @@ def add_eval_argument(parser):
     parser.add_argument('--tune_SVM', action='store_true', default=False)
 
 
+def add_checkpoint_argument(parser):
+    parser.add_argument('--checkpoint_file_path', type=str, default=None,
+                        help='Path to checkpoint file to resume training')
+    
+    
 def save_config(args, path):
     with open(path, 'w') as f:
         for key, value in vars(args).items():

@@ -210,7 +210,8 @@ __marimo__/
 *.egg-info
 results/
 glove.6B.100d.txt
-wikipedia/
 .DS_Store
 debug/
 tmp/
+datasets/wikipedia/*
+!datasets/wikipedia/.gitkeep

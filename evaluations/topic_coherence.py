@@ -32,7 +32,7 @@ def TC_on_wikipedia(top_word_path, cv_type='C_V'):
     wiki_dir = os.path.join(".", 'datasets')
     random_number = np.random.randint(100000)
     os.system(
-        f"java -jar {os.path.join(jar_dir, 'pametto.jar')} {os.path.join(wiki_dir, 'wikipedia', 'wikipedia_bd')} {cv_type} {top_word_path} > tmp{random_number}.txt")
+        f"java -jar {os.path.join(jar_dir, 'pametto.jar')} {os.path.join(wiki_dir, 'wikipedia/wikipedia_bd/')} {cv_type} {top_word_path} > tmp{random_number}.txt")
     cv_score = []
     with open(f"tmp{random_number}.txt", "r") as f:
         for line in f.readlines():

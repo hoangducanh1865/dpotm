@@ -1,7 +1,11 @@
-from utils import config, log, miscellaneous, seed
 import os
 import numpy as np
 import basic_trainer
+import evaluations
+import datasethandler
+import scipy
+import torch
+import wandb
 from models.ECRTM.ECRTM import ECRTM
 from models.FASTOPIC.FASTOPIC import FASTOPIC
 from models.NSTM.NSTM import NSTM
@@ -9,11 +13,8 @@ from models.CTM import CTM
 from models.ETM import ETM
 from models.ProdLDA import ProdLDA
 from models.WETE import WeTe
-import evaluations
-import datasethandler
-import scipy
-import torch
-import wandb
+from utils import config, log, miscellaneous, seed
+
 
 RESULT_DIR = 'results'
 DATA_DIR = 'datasets'
@@ -26,12 +27,15 @@ if __name__ == "__main__":
     config.add_training_argument(parser)
     config.add_eval_argument(parser)
     config.add_wete_argument(parser)
+    config.add_checkpoint_argument(parser)
     args = parser.parse_args()
     
     prj = args.wandb_prj if args.wandb_prj else 'baselines'
 
     current_time = miscellaneous.get_current_datetime()
     current_run_dir = os.path.join(RESULT_DIR + "/" + str(args.model) + "/" +str(args.dataset), current_time)
+    current_checkpoint_dir = os.path.join(current_run_dir, "checkpoints")
+    os.makedirs(current_checkpoint_dir, exist_ok=True) # QUESTION: is this necessary?
     miscellaneous.create_folder_if_not_exist(current_run_dir)
 
     config.save_config(args, os.path.join(current_run_dir, 'config.txt'))
@@ -40,7 +44,7 @@ if __name__ == "__main__":
     
     logger = log.setup_logger(
         'main', os.path.join(current_run_dir, 'main.log'))
-    wandb.login(key="")
+    wandb.login(key="bc4d85b809d100796d00d014b47680a673dbf4e9")
     wandb.init(project=prj, config=args)
     wandb.log({'time_stamp': current_time})
 
@@ -58,6 +62,7 @@ if __name__ == "__main__":
     # create a model
     pretrainWE = scipy.sparse.load_npz(os.path.join(
         DATA_DIR, args.dataset, "word_embeddings.npz")).toarray()
+
 
     if args.model == "ECRTM":
         model = ECRTM(vocab_size=dataset.vocab_size, 
@@ -113,25 +118,29 @@ if __name__ == "__main__":
         trainer = basic_trainer.BasicTrainer(model, epochs=args.epochs,
                                             learning_rate=args.lr,
                                             batch_size=args.batch_size,
-                                            lr_scheduler=args.lr_scheduler,
+                                            use_lr_scheduler=args.lr_scheduler,
                                             lr_step_size=args.lr_step_size,
-                                            device=args.device)
+                                            device=args.device,
+                                            checkpoint_dir=current_checkpoint_dir)
 
 
     # train the model
     
     if args.model == "FASTOPIC":
         train_simple_embedding, train_theta = trainer.train(dataset)
-    # save beta, theta and top words
+        # save beta, theta and top words
         beta = trainer.save_beta(current_run_dir)
         test_theta = trainer.model.get_theta(dataset.test_contextual_embed, train_simple_embedding)
         train_theta = np.asarray(train_theta.cpu())
         test_theta = np.asarray(test_theta.cpu())
     else:
-        trainer.train(dataset)
-    # save beta, theta and top words
-        beta = trainer.save_beta(current_run_dir)
-        train_theta, test_theta = trainer.save_theta(dataset, current_run_dir)
+        if args.checkpoint_file_path is not None:
+            trainer.load_checkpoint(args.checkpoint_file_path)
+        else:
+            trainer.train(dataset)
+            # save beta, theta and top words
+            beta = trainer.save_beta(current_run_dir)
+            train_theta, test_theta = trainer.save_theta(dataset, current_run_dir)
     
     top_words_10 = trainer.save_top_words(
         dataset.vocab, 10, current_run_dir)
@@ -174,13 +183,13 @@ if __name__ == "__main__":
         top_words_10, _type="TD")
     print(f"TD_10: {TD_10:.5f}")
     wandb.log({"TD_10": TD_10})
-    # logger.info(f"TD_10: {TD_10:.5f}")
+    logger.info(f"TD_10: {TD_10:.5f}")
 
     TD_15 = evaluations.compute_topic_diversity(
         top_words_15, _type="TD")
     print(f"TD_15: {TD_15:.5f}")
     wandb.log({"TD_15": TD_15})
-    # logger.info(f"TD_15: {TD_15:.5f}")
+    logger.info(f"TD_15: {TD_15:.5f}")
 
     # TD_20 = topmost.evaluations.compute_topic_diversity(
     #     top_words_20, _type="TD")
@@ -202,8 +211,8 @@ if __name__ == "__main__":
         print(f'Purity: ', clustering_results['Purity'])
         wandb.log({"NMI": clustering_results['NMI']})
         wandb.log({"Purity": clustering_results['Purity']})
-        # logger.info(f"NMI: {clustering_results['NMI']}")
-        # logger.info(f"Purity: {clustering_results['Purity']}")
+        logger.info(f"NMI: {clustering_results['NMI']}")
+        logger.info(f"Purity: {clustering_results['Purity']}")
 
     # evaluate classification
     if read_labels:
@@ -211,18 +220,18 @@ if __name__ == "__main__":
             train_theta, test_theta, dataset.train_labels, dataset.test_labels, tune=args.tune_SVM)
         print(f"Accuracy: ", classification_results['acc'])
         wandb.log({"Accuracy": classification_results['acc']})
-        # logger.info(f"Accuracy: {classification_results['acc']}")
+        logger.info(f"Accuracy: {classification_results['acc']}")
         print(f"Macro-f1", classification_results['macro-F1'])
         wandb.log({"Macro-f1": classification_results['macro-F1']})
-        # logger.info(f"Macro-f1: {classification_results['macro-F1']}")
+        logger.info(f"Macro-f1: {classification_results['macro-F1']}")
 
     # TC
     TC_15_list, TC_15 = evaluations.topic_coherence.TC_on_wikipedia(
         os.path.join(current_run_dir, 'top_words_15.txt'))
     print(f"TC_15: {TC_15:.5f}")
     wandb.log({"TC_15": TC_15})
-    # logger.info(f"TC_15: {TC_15:.5f}")
-    # logger.info(f'TC_15 list: {TC_15_list}')
+    logger.info(f"TC_15: {TC_15:.5f}")
+    logger.info(f'TC_15 list: {TC_15_list}')
 
     # TC_10_list, TC_10 = topmost.evaluations.topic_coherence.TC_on_wikipedia(
     #     os.path.join(current_run_dir, 'top_words_10.txt'))
@@ -236,22 +245,22 @@ if __name__ == "__main__":
         dataset.train_texts, dataset.vocab, top_words_10, cv_type='c_npmi')
     print(f"NPMI_train_10: {NPMI_train_10:.5f}, NPMI_train_10_list: {NPMI_train_10_list}")
     wandb.log({"NPMI_train_10": NPMI_train_10})
-    # logger.info(f"NPMI_train_10: {NPMI_train_10:.5f}")
-    # logger.info(f'NPMI_train_10 list: {NPMI_train_10_list}')
+    logger.info(f"NPMI_train_10: {NPMI_train_10:.5f}")
+    logger.info(f'NPMI_train_10 list: {NPMI_train_10_list}')
 
     NPMI_wiki_10_list, NPMI_wiki_10 = evaluations.topic_coherence.TC_on_wikipedia(
         os.path.join(current_run_dir, 'top_words_10.txt'), cv_type='NPMI')
     print(f"NPMI_wiki_10: {NPMI_wiki_10:.5f}, NPMI_wiki_10_list: {NPMI_wiki_10_list}")
     wandb.log({"NPMI_wiki_10": NPMI_wiki_10})
-    # logger.info(f"NPMI_wiki_10: {NPMI_wiki_10:.5f}")
-    # logger.info(f'NPMI_wiki_10 list: {NPMI_wiki_10_list}')
+    logger.info(f"NPMI_wiki_10: {NPMI_wiki_10:.5f}")
+    logger.info(f'NPMI_wiki_10 list: {NPMI_wiki_10_list}')
 
     Cp_wiki_10_list, Cp_wiki_10 = evaluations.topic_coherence.TC_on_wikipedia(
         os.path.join(current_run_dir, 'top_words_10.txt'), cv_type='C_P')
     print(f"Cp_wiki_10: {Cp_wiki_10:.5f}, Cp_wiki_10_list: {Cp_wiki_10_list}")
     wandb.log({"Cp_wiki_10": Cp_wiki_10})
-    # logger.info(f"Cp_wiki_10: {Cp_wiki_10:.5f}")
-    # logger.info(f'Cp_wiki_10 list: {Cp_wiki_10_list}')
+    logger.info(f"Cp_wiki_10: {Cp_wiki_10:.5f}")
+    logger.info(f'Cp_wiki_10 list: {Cp_wiki_10_list}')
     
     # w2v_list, w2v = evaluations.topic_coherence.compute_topic_coherence(
     #     dataset.train_texts, dataset.vocab, top_words_10, cv_type='c_w2v')
@@ -261,3 +270,12 @@ if __name__ == "__main__":
     # logger.info(f'w2v list: {w2v_list}')
 
     wandb.finish()
+
+    '''
+    preference_dataset_creator = PreferenceDatasetCreator(current_run_dir)
+    preference_dataset_creator.create()
+    preference_dataset_creator.save()
+    
+    finetuner = DPOFinetuner(preference_dataset_creator.preference_dataset_path)
+    finetuner.finetune() # included save checkpoint
+    '''

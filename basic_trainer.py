@@ -11,19 +11,22 @@ from time import time
 
 
 class BasicTrainer:
-    def __init__(self, model, epochs=200, learning_rate=0.002, batch_size=200, lr_scheduler=None, lr_step_size=125, log_interval=5, device="cuda"):
+    def __init__(self, model, epochs=200, learning_rate=0.002, batch_size=200, use_lr_scheduler=None, lr_step_size=125, log_interval=5, device="cuda", checkpoint_dir=None):
         self.model = model
         self.epochs = epochs
         self.learning_rate = learning_rate
         self.batch_size = batch_size
-        self.lr_scheduler = lr_scheduler
         self.lr_step_size = lr_step_size
         self.log_interval = log_interval
         self.device = device
+        self.checkpoint_dir = checkpoint_dir
+        self.optimizer = self.make_optimizer()
+        if use_lr_scheduler:
+            self.lr_scheduler = self.make_lr_scheduler()
 
         self.logger = logging.getLogger('main')
 
-    def make_optimizer(self,):
+    def make_optimizer(self):
         args_dict = {
             'params': self.model.parameters(),
             'lr': self.learning_rate,
@@ -32,12 +35,10 @@ class BasicTrainer:
         optimizer = torch.optim.Adam(**args_dict)
         return optimizer
 
-    def make_lr_scheduler(self, optimizer):
-        if self.lr_scheduler == "StepLR":
-            lr_scheduler = StepLR(
-                optimizer, step_size=self.lr_step_size, gamma=0.5, verbose=False)
-        else:
-            raise NotImplementedError(self.lr_scheduler)
+    def make_lr_scheduler(self):
+        lr_scheduler = StepLR(
+            self.optimizer, step_size=self.lr_step_size, gamma=0.5, verbose=False)
+        
         return lr_scheduler
 
     def fit_transform(self, dataset_handler, num_top_words=15, verbose=False):
@@ -48,13 +49,6 @@ class BasicTrainer:
         return top_words, train_theta
 
     def train(self, dataset_handler, verbose=False):
-        optimizer = self.make_optimizer()
-
-        if self.lr_scheduler:
-            print("===>using lr_scheduler")
-            self.logger.info("===>using lr_scheduler")
-            lr_scheduler = self.make_lr_scheduler(optimizer)
-
         data_size = len(dataset_handler.train_dataloader.dataset)
 
         for epoch in tqdm(range(1, self.epochs + 1)):
@@ -67,10 +61,10 @@ class BasicTrainer:
                 rst_dict = self.model(batch_data)
                 batch_loss = rst_dict['loss']
 
-                optimizer.zero_grad()
+                self.optimizer.zero_grad()
                 batch_loss.backward()
                 # torch.nn.utils.clip_grad_norm_(self.model.parameters(), True)
-                optimizer.step()
+                self.optimizer.step()
 
                 for key in rst_dict:
                     try:
@@ -82,8 +76,7 @@ class BasicTrainer:
             # for key in loss_rst_dict:
                 # wandb.log({key: loss_rst_dict[key] / data_size})
             
-            if self.lr_scheduler:
-                lr_scheduler.step()
+            self.lr_scheduler.step()
 
             if verbose and epoch % self.log_interval == 0:
                 output_log = f'Epoch: {epoch:03d}'
@@ -92,6 +85,9 @@ class BasicTrainer:
 
                 print(output_log)
                 self.logger.info(output_log)
+            
+            if epoch == 400 or epoch == 500:
+                self.save_checkpoint(epoch)
 
     def test(self, input_data):
         data_size = input_data.shape[0]
@@ -173,6 +169,35 @@ class BasicTrainer:
 
         return word_embeddings, topic_embeddings
 
+    def save_checkpoint(self, epoch):
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'lr_scheduler_state_dict': self.lr_scheduler.state_dict()
+        }
+        
+        checkpoint_path = os.path.join(self.checkpoint_dir, f'checkpoint_epoch_{epoch}.pth')
+        
+        torch.save(checkpoint, checkpoint_path)
+        
+        self.logger.info(f"Checkpint saved: {checkpoint_path}")
+        
+        return checkpoint_path
+    
+    def load_checkpoint(self, checkpoint_path):
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
+            
+        start_epoch = checkpoint['epoch'] + 1
+        
+        self.logger.info(f'Checkpoint loaded: {checkpoint_path}, resuming at epoch {start_epoch}')
+        
+        return start_epoch
+        
 class FastBasicTrainer:
     def __init__(self, model, epochs=200, learning_rate=0.002, batch_size=200, lr_scheduler=None, lr_step_size=125, log_interval=5, device = "cuda"):
         self.model = model
