@@ -14,6 +14,7 @@ from models.CTM import CTM
 from models.ETM import ETM
 from models.ProdLDA import ProdLDA
 from models.WETE import WeTe
+from dpo_finetuner import DPOFinetuner
 from utils.preference_dataset_creator import PreferenceDatasetCreator
 from utils import config, log, miscellaneous, seed
 
@@ -74,7 +75,8 @@ if __name__ == "__main__":
                       num_topics=args.num_topics, 
                       dropout=args.dropout, 
                       pretrained_WE=pretrainWE if args.use_pretrainWE else None, 
-                      weight_loss_ECR=args.weight_ECR)
+                      weight_loss_ECR=args.weight_ECR,
+                      current_run_dir=current_run_dir)
     elif args.model == "FASTOPIC":
         model = FASTOPIC(vocab_size=dataset.vocab_size, num_topics=args.num_topics)
     elif args.model == "NSTM":
@@ -248,7 +250,7 @@ if __name__ == "__main__":
     # logger.info(f'TC_10 list: {TC_10_list}')
 
     # NPMI
-    NPMI_train_10_list, NPMI_train_10 = evaluations.compute_topic_coherence(
+    '''NPMI_train_10_list, NPMI_train_10 = evaluations.compute_topic_coherence(
         dataset.train_texts, dataset.vocab, top_words_10, cv_type='c_npmi')
     print(f"NPMI_train_10: {NPMI_train_10:.5f}, NPMI_train_10_list: {NPMI_train_10_list}")
     wandb.log({"NPMI_train_10": NPMI_train_10})
@@ -267,7 +269,7 @@ if __name__ == "__main__":
     print(f"Cp_wiki_10: {Cp_wiki_10:.5f}, Cp_wiki_10_list: {Cp_wiki_10_list}")
     wandb.log({"Cp_wiki_10": Cp_wiki_10})
     logger.info(f"Cp_wiki_10: {Cp_wiki_10:.5f}")
-    logger.info(f'Cp_wiki_10 list: {Cp_wiki_10_list}')
+    logger.info(f'Cp_wiki_10 list: {Cp_wiki_10_list}')'''
     
     # w2v_list, w2v = evaluations.topic_coherence.compute_topic_coherence(
     #     dataset.train_texts, dataset.vocab, top_words_10, cv_type='c_w2v')
@@ -276,21 +278,103 @@ if __name__ == "__main__":
     # logger.info(f"w2v: {w2v:.5f}")
     # logger.info(f'w2v list: {w2v_list}')
 
-    wandb.finish()
-
     preference_dataset_creator = PreferenceDatasetCreator(current_run_dir)
     preference_dataset_creator.create()
     
-    '''
     finetuner = DPOFinetuner(model, epochs=args.epochs,
+                             finetune_epochs=args.finetune_epochs,
                              learning_rate=args.lr,
                              batch_size=args.batch_size,
-                             lr_scheduler=args.lr_scheduler,
+                             use_lr_scheduler=args.lr_scheduler,
                              lr_step_size=args.lr_step_size,
                              device=args.device,
+                             checkpoint_dir=current_checkpoint_dir,
                              preference_dataset_path=preference_dataset_creator.preference_dataset_path)
     finetuner.load_checkpoint(checkpoint_path=args.checkpoint_path)
-    finetuner.finetune() # included save checkpoint
+    finetuner.finetune(dataset) # included save checkpoint 500 or 600
     beta = finetuner.save_beta(current_run_dir)
     train_theta, test_theta = finetuner.save_theta(dataset, current_run_dir)
-    '''
+    
+    top_words_10 = finetuner.save_top_words(
+        dataset.vocab, 10, current_run_dir)
+    top_words_15 = finetuner.save_top_words(
+        dataset.vocab, 15, current_run_dir)
+    top_words_20 = finetuner.save_top_words(
+        dataset.vocab, 20, current_run_dir)
+    top_words_25 = finetuner.save_top_words(
+        dataset.vocab, 25, current_run_dir)
+    
+    train_theta_argmax = train_theta.argmax(axis=1)
+    unique_elements, counts = np.unique(train_theta_argmax, return_counts=True)
+    print(f'train theta argmax: {unique_elements, counts}')
+    logger.info(f'train theta argmax: {unique_elements, counts}')
+    test_theta_argmax = test_theta.argmax(axis=1)
+    unique_elements, counts = np.unique(test_theta_argmax, return_counts=True)
+    print(f'test theta argmax: {unique_elements, counts}')
+    logger.info(f'test theta argmax: {unique_elements, counts}')       
+    
+    TD_10 = evaluations.compute_topic_diversity(
+        top_words_10, _type="TD")
+    print(f"TD_10: {TD_10:.5f}")
+    wandb.log({"TD_10": TD_10})
+    logger.info(f"TD_10: {TD_10:.5f}")
+
+    TD_15 = evaluations.compute_topic_diversity(
+        top_words_15, _type="TD")
+    print(f"TD_15: {TD_15:.5f}")
+    wandb.log({"TD_15": TD_15})
+    logger.info(f"TD_15: {TD_15:.5f}")
+    
+    # evaluating clustering
+    if read_labels:
+        clustering_results = evaluations.evaluate_clustering(
+            test_theta, dataset.test_labels)
+        print(f"NMI: ", clustering_results['NMI'])
+        print(f'Purity: ', clustering_results['Purity'])
+        wandb.log({"NMI": clustering_results['NMI']})
+        wandb.log({"Purity": clustering_results['Purity']})
+        logger.info(f"NMI: {clustering_results['NMI']}")
+        logger.info(f"Purity: {clustering_results['Purity']}")
+
+    # evaluate classification
+    if read_labels:
+        classification_results = evaluations.evaluate_classification(
+            train_theta, test_theta, dataset.train_labels, dataset.test_labels, tune=args.tune_SVM)
+        print(f"Accuracy: ", classification_results['acc'])
+        wandb.log({"Accuracy": classification_results['acc']})
+        logger.info(f"Accuracy: {classification_results['acc']}")
+        print(f"Macro-f1", classification_results['macro-F1'])
+        wandb.log({"Macro-f1": classification_results['macro-F1']})
+        logger.info(f"Macro-f1: {classification_results['macro-F1']}")
+
+    # TC
+    TC_15_list, TC_15 = evaluations.topic_coherence.TC_on_wikipedia(
+        os.path.join(current_run_dir, 'finetuned_top_words_15.txt'))
+    print(f"TC_15: {TC_15:.5f}")
+    wandb.log({"TC_15": TC_15})
+    logger.info(f"TC_15: {TC_15:.5f}")
+    logger.info(f'TC_15 list: {TC_15_list}')
+    
+    # NPMI
+    NPMI_train_10_list, NPMI_train_10 = evaluations.compute_topic_coherence(
+        dataset.train_texts, dataset.vocab, top_words_10, cv_type='c_npmi')
+    print(f"NPMI_train_10: {NPMI_train_10:.5f}, NPMI_train_10_list: {NPMI_train_10_list}")
+    wandb.log({"NPMI_train_10": NPMI_train_10})
+    logger.info(f"NPMI_train_10: {NPMI_train_10:.5f}")
+    logger.info(f'NPMI_train_10 list: {NPMI_train_10_list}')
+
+    NPMI_wiki_10_list, NPMI_wiki_10 = evaluations.topic_coherence.TC_on_wikipedia(
+        os.path.join(current_run_dir, 'finetuned_top_words_10.txt'), cv_type='NPMI')
+    print(f"NPMI_wiki_10: {NPMI_wiki_10:.5f}, NPMI_wiki_10_list: {NPMI_wiki_10_list}")
+    wandb.log({"NPMI_wiki_10": NPMI_wiki_10})
+    logger.info(f"NPMI_wiki_10: {NPMI_wiki_10:.5f}")
+    logger.info(f'NPMI_wiki_10 list: {NPMI_wiki_10_list}')
+
+    Cp_wiki_10_list, Cp_wiki_10 = evaluations.topic_coherence.TC_on_wikipedia(
+        os.path.join(current_run_dir, 'finetuned_top_words_10.txt'), cv_type='C_P')
+    print(f"Cp_wiki_10: {Cp_wiki_10:.5f}, Cp_wiki_10_list: {Cp_wiki_10_list}")
+    wandb.log({"Cp_wiki_10": Cp_wiki_10})
+    logger.info(f"Cp_wiki_10: {Cp_wiki_10:.5f}")
+    logger.info(f'Cp_wiki_10 list: {Cp_wiki_10_list}')
+    
+    wandb.finish()

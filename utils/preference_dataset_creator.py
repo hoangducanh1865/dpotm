@@ -34,7 +34,7 @@ class PreferenceDatasetCreator:
                 raise TypeError(f"JSON parsing failed for line {k}: {raw_data}")
             return data
             
-        with open(self.top_words_15_path, 'r', encoding='utf-8') as infile, open(self.preference_dataset_path, 'w', encoding='utf-8') as outfile:
+        with open(self.top_words_20_path, 'r', encoding='utf-8') as infile, open(self.preference_dataset_path, 'w', encoding='utf-8') as outfile:
             for k, line in enumerate(infile):
                 data = process_line(k, line)
                 outfile.write(json.dumps(data, ensure_ascii=False) + '\n')

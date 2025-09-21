@@ -1,4 +1,5 @@
 import argparse
+from utils.configs import Configs as cfg 
 
 
 def new_parser(name=None):
@@ -42,8 +43,8 @@ def add_wete_argument(parser):
 
 
 def add_training_argument(parser):
-    parser.add_argument('--epochs', type=int, default=500,
-                        help='number of epochs to train the model')
+    parser.add_argument('--epochs', type=int, default=500)
+    parser.add_argument('--finetune_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=200,
                         help='batch size')
     parser.add_argument('--lr', type=float, default=0.002,

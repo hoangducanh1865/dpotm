@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 from torch import nn
@@ -13,7 +14,7 @@ class ECRTM(nn.Module):
 
         Xiaobao Wu, Xinshuai Dong, Thong Thanh Nguyen, Anh Tuan Luu.
     '''
-    def __init__(self, vocab_size, num_topics=50, en_units=200, dropout=0., pretrained_WE=None, embed_size=200, beta_temp=0.2, weight_loss_ECR=100.0, sinkhorn_alpha=20.0, sinkhorn_max_iter=1000):
+    def __init__(self, vocab_size, num_topics=50, en_units=200, dropout=0., pretrained_WE=None, embed_size=200, beta_temp=0.2, weight_loss_ECR=100.0, sinkhorn_alpha=20.0, sinkhorn_max_iter=1000, current_run_dir=None):
         super().__init__()
 
         self.is_finetuing = True
@@ -21,11 +22,11 @@ class ECRTM(nn.Module):
         self.vocab_size = vocab_size
         self.num_topics = num_topics
         self.beta_temp = beta_temp
+        self.current_run_dir = current_run_dir
         
-        self.beta_ref_path = cfg.BETA_REF_PATH
-        self.beta_ref = torch.from_numpy(np.load(self.beta_ref_path)).float().to(self.device)
-        self.beta_ref.requires_grad = False
-        self.reference_dataset_path = cfg.REFERENCE_DATASET_PATH
+        self.beta_ref_path = None
+        self.beta_ref = None
+        self.reference_dataset_path = None
 
         self.a = 1 * np.ones((1, num_topics)).astype(np.float32)
         self.mu2 = nn.Parameter(torch.as_tensor((np.log(self.a).T - np.mean(np.log(self.a), 1)).T))
@@ -110,6 +111,11 @@ class ECRTM(nn.Module):
         return loss_ECR
     
     def get_loss_DPO(self):
+        self.beta_ref_path = os.path.join(self.current_run_dir, 'beta.npy')
+        self.beta_ref = torch.from_numpy(np.load(self.beta_ref_path)).float().to(self.device)
+        self.beta_ref.requires_grad = False
+        self.reference_dataset_path = os.path.join(self.current_run_dir, 'preference_dataset.jsonl')
+        
         beta = self.get_beta()
         beta_ref = self.beta_ref
         # Debug

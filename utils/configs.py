@@ -3,12 +3,12 @@ import torch
 
 class Configs:
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    BETA_REF_PATH = 'results/ECRTM/StackOverflow/2025-09-21_01-38-04/beta.npy'
-    REFERENCE_DATASET_PATH = 'results/ECRTM/StackOverflow/2025-09-21_06-15-56/preference_dataset.jsonl'
+    
     CHECKPOINT_PATH = 'results/ECRTM/StackOverflow/2025-09-21_01-38-04/checkpoints/checkpoint_epoch_500.pth'
+    
     LLM_MODEL = 'gpt-4o-mini'
     SYSTEM_PROMPT = """You are a text classifier.  
-Your task is to analyze a line of 10 words.  
+Your task is to analyze a line of 20 words.  
 
 For each line:
 1. Identify the main topic that most of the words are related to.  
