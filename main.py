@@ -283,7 +283,7 @@ if __name__ == "__main__":
     
     finetuner = DPOFinetuner(model, epochs=args.epochs,
                              finetune_epochs=args.finetune_epochs,
-                             learning_rate=args.lr,
+                             learning_rate=args.finetune_lr,
                              batch_size=args.batch_size,
                              use_lr_scheduler=args.lr_scheduler,
                              lr_step_size=args.lr_step_size,

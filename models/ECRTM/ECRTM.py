@@ -26,7 +26,8 @@ class ECRTM(nn.Module):
         
         self.beta_ref_path = None
         self.beta_ref = None
-        self.reference_dataset_path = None
+        self.preference_dataset_path = None
+        self.preference_dataset = None
 
         self.a = 1 * np.ones((1, num_topics)).astype(np.float32)
         self.mu2 = nn.Parameter(torch.as_tensor((np.log(self.a).T - np.mean(np.log(self.a), 1)).T))
@@ -110,33 +111,45 @@ class ECRTM(nn.Module):
         loss_ECR = self.ECR(cost)
         return loss_ECR
     
-    def get_loss_DPO(self):
+    def load_preference_dataset(self):
+        self.preference_dataset_path = os.path.join(self.current_run_dir, 'preference_dataset.jsonl')
+        if self.preference_dataset is None:
+            self.preference_dataset = []
+            with open(self.preference_dataset_path, 'r') as f:
+                for line in f:
+                    self.preference_dataset.append(line)
         self.beta_ref_path = os.path.join(self.current_run_dir, 'beta.npy')
         self.beta_ref = torch.from_numpy(np.load(self.beta_ref_path)).float().to(self.device)
         self.beta_ref.requires_grad = False
-        self.reference_dataset_path = os.path.join(self.current_run_dir, 'preference_dataset.jsonl')
-        
+    
+    def get_loss_DPO(self):
+        if self.preference_dataset is None:
+            self.load_preference_dataset()
+            
         beta = self.get_beta()
-        beta_ref = self.beta_ref
         # Debug
-        print(f"Loaded beta_ref shape: {beta_ref.shape}")
+        '''print(f"Loaded beta_ref shape: {beta_ref.shape}")'''
         
         loss_DPO = []
-        with open(self.reference_dataset_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                data = json.loads(line)
-                k = data['k']
-                w_plus_indices = data['w_plus_indices']
-                w_minus_indices = data['w_minus_indices']
-                
-                for w_minus_idx in w_minus_indices:
-                    for w_plus_idx in w_plus_indices:
-                        delta = beta[k, w_plus_idx] - beta[k, w_minus_idx]
-                        delta_ref = beta_ref[k, w_plus_idx] - beta_ref[k, w_minus_idx]
-                        loss_DPO_sample = -F.logsigmoid(delta - delta_ref)
-                        loss_DPO.append(loss_DPO_sample)
+        for line in self.preference_dataset:
+            data = json.loads(line)
+            k = data['k']
+            w_plus_indices = data['w_plus_indices']
+            w_minus_indices = data['w_minus_indices']
+            
+            for w_minus_idx in w_minus_indices:
+                for w_plus_idx in w_plus_indices:
+                    delta = beta[k, w_plus_idx] - beta[k, w_minus_idx]
+                    delta_ref = self.beta_ref[k, w_plus_idx] - self.beta_ref[k, w_minus_idx]
+                    loss_DPO_sample = -F.logsigmoid(delta - delta_ref)
+                    loss_DPO.append(loss_DPO_sample)
         
         return torch.stack(loss_DPO).mean()
+
+    def get_loss_regularization(self):
+        beta = self.get_beta()
+        regularization_term = torch.mean((beta - self.beta_ref) ** 2)
+        return regularization_term
 
     def pairwise_euclidean_distance(self, x, y):
         cost = torch.sum(x ** 2, axis=1, keepdim=True) + torch.sum(y ** 2, dim=1) - 2 * torch.matmul(x, y.t())
@@ -154,6 +167,7 @@ class ECRTM(nn.Module):
             loss_TM = recon_loss + loss_KL
 
             loss_ECR = self.get_loss_ECR()
+            
             loss = loss_TM + loss_ECR
 
             rst_dict = {
@@ -175,15 +189,20 @@ class ECRTM(nn.Module):
 
             loss_ECR = self.get_loss_ECR()
             
+            lambda_ref = 1.0 # [0.01, 0.05, 0.1, 0.5, 1.0]
             loss_DPO = self.get_loss_DPO()
             
-            loss = loss_TM + loss_ECR + loss_DPO
+            lambda_reg = 0.01 # [0.001, 0.005, 0.01]
+            loss_regularization = self.get_loss_regularization()
+            
+            loss = loss_TM + loss_ECR + lambda_ref * loss_DPO + lambda_reg * loss_regularization
 
             rst_dict = {
                 'loss': loss,
                 'loss_TM': loss_TM,
                 'loss_ECR': loss_ECR,
-                'loss_DPO': loss_DPO
+                'loss_DPO': loss_DPO,
+                'loss_regularization': loss_regularization
             }
 
             return rst_dict

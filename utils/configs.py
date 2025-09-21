@@ -8,7 +8,7 @@ class Configs:
     
     LLM_MODEL = 'gpt-4o-mini'
     SYSTEM_PROMPT = """You are a text classifier.  
-Your task is to analyze a line of 20 words.  
+Your task is to analyze a line of 25 words.  
 
 For each line:
 1. Identify the main topic that most of the words are related to.  
