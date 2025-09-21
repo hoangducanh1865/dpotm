@@ -8,7 +8,7 @@ def new_parser(name=None):
 
 def add_dataset_argument(parser):
     parser.add_argument('--dataset', type=str,
-                        help='dataset name', default='StackOverflow')
+                        help='dataset name', default='WOS_vocab_5k')
     parser.add_argument('--plm_model', type=str,
                         help='plm model name', default='all-mpnet-base-v2')
     
@@ -65,7 +65,7 @@ def add_eval_argument(parser):
 
 
 def add_checkpoint_argument(parser):
-    parser.add_argument('--checkpoint_path', type=str, default=cfg.CHECKPOINT_PATH,
+    parser.add_argument('--checkpoint_path', type=str, default=None,
                         help='Path to checkpoint file to resume training')
     
     

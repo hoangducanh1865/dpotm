@@ -206,12 +206,16 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-
+wandb
 *.egg-info
-results/
+results/*
+!results/.gitkeep
 glove.6B.100d.txt
 .DS_Store
 debug/
 tmp/
 datasets/wikipedia/*
 !datasets/wikipedia/.gitkeep
+!wandb/
+wandb/*
+!wandb/.gitkeep

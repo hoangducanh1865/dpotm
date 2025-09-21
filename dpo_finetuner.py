@@ -1,3 +1,4 @@
+import json
 import numpy as np
 from tqdm import tqdm
 import torch
@@ -110,10 +111,10 @@ class DPOFinetuner:
         beta = self.model.get_beta().detach().cpu().numpy()
         return beta
 
-    def export_top_words(self, vocab, num_top_words=15):
+    def export_top_words(self, vocab, num_top_words):
         beta = self.export_beta()
-        top_words = static_utils.print_topic_words(beta, vocab, num_top_words)
-        return top_words
+        top_words, top_word_indices = static_utils.print_topic_words(beta, vocab, num_top_words)
+        return top_words, top_word_indices
 
     def export_theta(self, dataset_handler):
         train_theta = self.test(dataset_handler.train_data)
@@ -126,10 +127,26 @@ class DPOFinetuner:
         return beta
 
     def save_top_words(self, vocab, num_top_words, dir_path):
-        top_words = self.export_top_words(vocab, num_top_words)
+        top_words, top_word_indices = self.export_top_words(vocab, num_top_words)
         with open(os.path.join(dir_path, f'finetuned_top_words_{num_top_words}.txt'), 'w') as f:
             for i, words in enumerate(top_words):
                 f.write(words + '\n')
+    
+        with open(os.path.join(dir_path, f'finetuned_top_words_{num_top_words}.jsonl'), 'w') as f:
+            for k, (words, indices) in enumerate(zip(top_words, top_word_indices)):
+                words_list = words.split()
+                top_words_with_indices = []
+                for word, idx in zip(words_list, indices):
+                    top_words_with_indices.append({word: idx})
+                
+                topic_data = {
+                    'k': k,
+                    'top_words': top_words_with_indices
+                }
+                
+                f.write(json.dumps(topic_data) + '\n')
+        
+        top_words = ' '.join(top_words)
         return top_words
 
     def save_theta(self, dataset_handler, dir_path):

@@ -9,21 +9,30 @@ class PreferenceDatasetCreator:
     def __init__(self, dir_path):
         load_dotenv()
         self.preference_dataset_path = os.path.join(dir_path, 'preference_dataset.jsonl')
-        self.top_words_10_path = os.path.join(dir_path, 'top_words_10.txt')
-        self.top_words_15_path = os.path.join(dir_path, 'top_words_15.txt')
-        self.top_words_20_path = os.path.join(dir_path, 'top_words_20.txt')
-        self.top_words_25_path = os.path.join(dir_path, 'top_words_25.txt')
+        self.top_words_10_path = os.path.join(dir_path, 'top_words_10.jsonl')
+        self.top_words_15_path = os.path.join(dir_path, 'top_words_15.jsonl')
+        self.top_words_20_path = os.path.join(dir_path, 'top_words_20.jsonl')
+        self.top_words_25_path = os.path.join(dir_path, 'top_words_25.jsonl')
         self.model = cfg.LLM_MODEL
         self.llm = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         self.system_prompt = cfg.SYSTEM_PROMPT
 
     def create(self):
         def process_line(k, line):
+            topic_data = json.loads(line.strip())
+            top_words = topic_data['top_words']
+            words_with_indices = []
+            for word_dict in top_words:
+                for word, idx in word_dict.items():
+                    words_with_indices.append(f"'{word}' (beta_index: {idx})")
+            
+            prompt_content = f"Topic {k}: {', '.join(words_with_indices)}"
+            
             response = self.llm.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": f"Line {k}: {line.strip()}"}
+                    {"role": "user", "content": prompt_content}
                 ],
                 temperature=0.0
             )
