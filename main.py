@@ -1,3 +1,4 @@
+import sys
 import os
 import numpy as np
 import basic_trainer
@@ -28,11 +29,11 @@ if __name__ == "__main__":
     
     parser = config.new_parser()
     config.add_dataset_argument(parser)
-    config.add_model_argument(parser)
     config.add_logging_argument(parser)
+    config.add_model_argument(parser)
+    config.add_wete_argument(parser)
     config.add_training_argument(parser)
     config.add_eval_argument(parser)
-    config.add_wete_argument(parser)
     args = parser.parse_args()
     
     prj = args.wandb_prj if args.wandb_prj else 'baselines'
@@ -71,7 +72,8 @@ if __name__ == "__main__":
 
 
     if args.model == "ECRTM":
-        model = ECRTM(vocab_size=dataset.vocab_size, 
+        model = ECRTM(args,
+                      vocab_size=dataset.vocab_size, 
                       num_topics=args.num_topics, 
                       dropout=args.dropout, 
                       pretrained_WE=pretrainWE if args.use_pretrainWE else None, 
@@ -279,6 +281,10 @@ if __name__ == "__main__":
     # logger.info(f"w2v: {w2v:.5f}")
     # logger.info(f'w2v list: {w2v_list}')
 
+    if args.finetune == False:
+        wandb.finish()
+        sys.exit(0)
+        
     preference_dataset_creator = PreferenceDatasetCreator(current_run_dir)
     preference_dataset_creator.create()
     

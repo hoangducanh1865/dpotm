@@ -14,7 +14,7 @@ def evaluate_classification(train_theta, test_theta, train_labels, test_labels, 
         logger = logging.getLogger('main')
         for C in [0.1, 1, 10, 100, 1000]:
             for gamma in ['scale', 'auto', 10, 1, 0.1, 0.01, 0.001]:
-                print(f'C: {C}, gamma: {gamma}')
+                '''print(f'C: {C}, gamma: {gamma}')'''
                 for kernel in ['rbf', 'linear']:
                     logger.info(f'C: {C}, gamma: {gamma}, kernel: {kernel}')
                     if classifier == 'SVM':

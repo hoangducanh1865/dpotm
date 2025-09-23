@@ -31,9 +31,11 @@ def add_model_argument(parser):
     parser.add_argument('--alpha_GR', type=float, default=5.)
     parser.add_argument('--weight_InfoNCE', type=float, default=50.)
     parser.add_argument('--beta_temp', type=float, default=0.2)
-    parser.add_argument('--weight_ECR', type=float, default=100.0)
+    parser.add_argument('--weight_ECR', type=float, default=350.0) # [100.0, 350.0] # Use 350.0 for better TD, use 100.0 for better TC
     parser.add_argument('--use_pretrainWE', action='store_true',
                         default=False, help='Enable use_pretrainWE mode')
+    parser.add_argument('--weight_dpo', type=float, default=0.5)
+    parser.add_argument('--weight_reg', type=float, default=0.5)
 
 def add_wete_argument(parser):
     parser.add_argument('--glove', type=str, default='glove.6B.100d.txt', help='embedding model name')

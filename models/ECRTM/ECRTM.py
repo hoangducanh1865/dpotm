@@ -14,7 +14,7 @@ class ECRTM(nn.Module):
 
         Xiaobao Wu, Xinshuai Dong, Thong Thanh Nguyen, Anh Tuan Luu.
     '''
-    def __init__(self, vocab_size, num_topics=50, en_units=200, dropout=0., pretrained_WE=None, embed_size=200, beta_temp=0.2, weight_loss_ECR=100.0, sinkhorn_alpha=20.0, sinkhorn_max_iter=1000, current_run_dir=None):
+    def __init__(self, args, vocab_size, num_topics=50, en_units=200, dropout=0., pretrained_WE=None, embed_size=200, beta_temp=0.2, weight_loss_ECR=100.0, sinkhorn_alpha=20.0, sinkhorn_max_iter=1000, current_run_dir=None):
         super().__init__()
 
         self.is_finetuing = False
@@ -28,6 +28,9 @@ class ECRTM(nn.Module):
         self.beta_ref = None
         self.preference_dataset_path = None
         self.preference_dataset = None
+        
+        self.weight_dpo = args.weight_dpo
+        self.weight_reg = args.weight_reg
 
         self.a = 1 * np.ones((1, num_topics)).astype(np.float32)
         self.mu2 = nn.Parameter(torch.as_tensor((np.log(self.a).T - np.mean(np.log(self.a), 1)).T))
@@ -118,33 +121,51 @@ class ECRTM(nn.Module):
             with open(self.preference_dataset_path, 'r') as f:
                 for line in f:
                     self.preference_dataset.append(line)
+        
+        # Also create reference beta and frozen it
         self.beta_ref_path = os.path.join(self.current_run_dir, 'beta.npy')
         self.beta_ref = torch.from_numpy(np.load(self.beta_ref_path)).float().to(self.device)
         self.beta_ref.requires_grad = False
     
-    def get_loss_DPO(self):
+    def get_loss_dpo(self):
         if self.preference_dataset is None:
             self.load_preference_dataset()
             
         beta = self.get_beta()
-        # Debug
-        '''print(f"Loaded beta_ref shape: {beta_ref.shape}")'''
         
-        loss_DPO = []
+        k_indices, w_plus_indices, w_minus_indices = [], [], []
+        
+        '''loss_DPO = []'''
         for line in self.preference_dataset:
             data = json.loads(line)
             k = data['k']
-            w_plus_indices = data['w_plus_indices']
-            w_minus_indices = data['w_minus_indices']
+            '''w_plus_indices = data['w_plus_indices']
+            w_minus_indices = data['w_minus_indices']'''
             
-            for w_minus_idx in w_minus_indices:
-                for w_plus_idx in w_plus_indices:
-                    delta = beta[k, w_plus_idx] - beta[k, w_minus_idx]
+            for w_plus_idx in data['w_plus_indices']:
+                for w_minus_idx in data['w_minus_indices']:
+                    '''delta = beta[k, w_plus_idx] - beta[k, w_minus_idx]
                     delta_ref = self.beta_ref[k, w_plus_idx] - self.beta_ref[k, w_minus_idx]
                     loss_DPO_sample = -F.logsigmoid(delta - delta_ref)
-                    loss_DPO.append(loss_DPO_sample)
+                    loss_DPO.append(loss_DPO_sample)'''
+                    k_indices.append(k)
+                    w_plus_indices.append(w_plus_idx)
+                    w_minus_indices.append(w_minus_idx)
         
-        return torch.stack(loss_DPO).mean()
+        # Convert to tensor for parallel computing
+        k_indices = torch.tensor(k_indices, device=self.device, dtype=torch.int64)
+        w_plus_indices = torch.tensor(w_plus_indices, device=self.device, dtype=torch.int64)
+        w_minus_indices = torch.tensor(w_minus_indices, device=self.device, dtype=torch.int64)
+        
+        # Calculate delta(s)
+        deltas = beta[k_indices, w_plus_indices] - beta[k_indices, w_minus_indices]
+        deltas_ref = self.beta_ref[k_indices, w_plus_indices] - self.beta_ref[k_indices, w_minus_indices]
+        
+        loss_dpo = -F.sigmoid(deltas - deltas_ref)
+        
+        return loss_dpo
+        
+        '''return torch.stack(loss_DPO).mean()'''
 
     def get_loss_regularization(self):
         beta = self.get_beta()
@@ -189,13 +210,11 @@ class ECRTM(nn.Module):
 
             loss_ECR = self.get_loss_ECR()
             
-            lambda_ref = 1.0 # [0.01, 0.05, 0.1, 0.5, 1.0]
-            loss_DPO = self.get_loss_DPO()
+            loss_DPO = self.get_loss_dpo()
             
-            lambda_reg = 0.01 # [0.001, 0.005, 0.01]
             loss_regularization = self.get_loss_regularization()
             
-            loss = loss_TM + loss_ECR + lambda_ref * loss_DPO + lambda_reg * loss_regularization
+            loss = loss_TM + loss_ECR + self.weight_dpo * loss_DPO + self.weight_reg * loss_regularization
 
             rst_dict = {
                 'loss': loss,
