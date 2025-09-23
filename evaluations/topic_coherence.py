@@ -24,19 +24,28 @@ def compute_topic_coherence(reference_corpus, vocab, top_words, cv_type='c_v'):
     return cv_per_topic, score
 
 
-def TC_on_wikipedia(top_word_path, cv_type='C_V'):
+def TC_on_wikipedia(use_kaggle, top_word_path, cv_type='C_V'):
     """
     Compute the TC score on the Wikipedia dataset
     """
     jar_dir = "evaluations"
-    wiki_dir = os.path.join(".", 'datasets')
     random_number = np.random.randint(100000)
-    os.system(
+    
+    if use_kaggle:
+        wiki_dir = '/kaggle/input/wikipedia/wikipedia_bd/'
+        os.system(
+        f"java -jar {os.path.join(jar_dir, 'pametto.jar')} {wiki_dir} {cv_type} {top_word_path} > tmp{random_number}.txt")
+    else:
+        wiki_dir = os.path.join(".", 'datasets')
+        os.system(
         f"java -jar {os.path.join(jar_dir, 'pametto.jar')} {os.path.join(wiki_dir, 'wikipedia/wikipedia_bd/')} {cv_type} {top_word_path} > tmp{random_number}.txt")
+    
     cv_score = []
     with open(f"tmp{random_number}.txt", "r") as f:
         for line in f.readlines():
             if not line.startswith("202"):
                 cv_score.append(float(line.strip().split()[1]))
+                
     os.remove(f"tmp{random_number}.txt")
+    
     return cv_score, sum(cv_score) / len(cv_score)

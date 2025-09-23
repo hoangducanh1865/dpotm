@@ -33,7 +33,6 @@ if __name__ == "__main__":
     config.add_training_argument(parser)
     config.add_eval_argument(parser)
     config.add_wete_argument(parser)
-    config.add_checkpoint_argument(parser)
     args = parser.parse_args()
     
     prj = args.wandb_prj if args.wandb_prj else 'baselines'
@@ -237,7 +236,8 @@ if __name__ == "__main__":
 
     # TC
     TC_15_list, TC_15 = evaluations.topic_coherence.TC_on_wikipedia(
-        os.path.join(current_run_dir, 'top_words_15.txt'))
+        use_kaggle=args.use_kaggle, 
+        top_word_path=os.path.join(current_run_dir, 'top_words_15.txt'))
     print(f"TC_15: {TC_15:.5f}")
     wandb.log({"TC_15": TC_15})
     logger.info(f"TC_15: {TC_15:.5f}")
@@ -351,7 +351,8 @@ if __name__ == "__main__":
 
     # TC
     TC_15_list, TC_15 = evaluations.topic_coherence.TC_on_wikipedia(
-        os.path.join(current_run_dir, 'finetuned_top_words_15.txt'))
+        use_kaggle=args.use_kaggle, 
+        top_word_path=os.path.join(current_run_dir, 'finetuned_top_words_15.txt'))
     print(f"TC_15: {TC_15:.5f}")
     wandb.log({"TC_15": TC_15})
     logger.info(f"TC_15: {TC_15:.5f}")
@@ -366,14 +367,16 @@ if __name__ == "__main__":
     logger.info(f'NPMI_train_10 list: {NPMI_train_10_list}')
 
     NPMI_wiki_10_list, NPMI_wiki_10 = evaluations.topic_coherence.TC_on_wikipedia(
-        os.path.join(current_run_dir, 'finetuned_top_words_10.txt'), cv_type='NPMI')
+        use_kaggle=args.use_kaggle,
+        top_word_path=os.path.join(current_run_dir, 'finetuned_top_words_10.txt'), cv_type='NPMI')
     print(f"NPMI_wiki_10: {NPMI_wiki_10:.5f}, NPMI_wiki_10_list: {NPMI_wiki_10_list}")
     wandb.log({"NPMI_wiki_10": NPMI_wiki_10})
     logger.info(f"NPMI_wiki_10: {NPMI_wiki_10:.5f}")
     logger.info(f'NPMI_wiki_10 list: {NPMI_wiki_10_list}')
 
     Cp_wiki_10_list, Cp_wiki_10 = evaluations.topic_coherence.TC_on_wikipedia(
-        os.path.join(current_run_dir, 'finetuned_top_words_10.txt'), cv_type='C_P')
+        use_kaggle=args.use_kaggle,
+        top_word_path=os.path.join(current_run_dir, 'finetuned_top_words_10.txt'), cv_type='C_P')
     print(f"Cp_wiki_10: {Cp_wiki_10:.5f}, Cp_wiki_10_list: {Cp_wiki_10_list}")
     wandb.log({"Cp_wiki_10": Cp_wiki_10})
     logger.info(f"Cp_wiki_10: {Cp_wiki_10:.5f}")

@@ -89,7 +89,7 @@ class DPOFinetuner:
                 print(output_log)
                 self.logger.info(output_log)
             
-            if epoch == 400 or epoch == 500:
+            if epoch == 600:
                 self.save_checkpoint(epoch)
 
     def test(self, input_data):
@@ -146,7 +146,7 @@ class DPOFinetuner:
                 
                 f.write(json.dumps(topic_data) + '\n')
         
-        top_words = ' '.join(top_words)
+        # top_words = ' '.join(top_words)
         return top_words
 
     def save_theta(self, dataset_handler, dir_path):

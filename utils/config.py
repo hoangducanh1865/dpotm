@@ -8,7 +8,7 @@ def new_parser(name=None):
 
 def add_dataset_argument(parser):
     parser.add_argument('--dataset', type=str,
-                        help='dataset name', default='WOS_vocab_5k')
+                        help='dataset name', default='BBC_new') # ['BBC_new', '20NG', 'WOS_vocab_5k']
     parser.add_argument('--plm_model', type=str,
                         help='plm model name', default='all-mpnet-base-v2')
     
@@ -17,7 +17,7 @@ def add_logging_argument(parser):
 
 
 def add_model_argument(parser):
-    parser.add_argument('--model', type=str, default='ECRTM')
+    parser.add_argument('--model', type=str, default='ECRTM') # ['ECRTM']
     parser.add_argument('--num_topics', type=int, default=50)
     parser.add_argument('--num_groups', type=int, default=20)
     parser.add_argument('--dropout', type=float, default=0.2)
@@ -33,16 +33,17 @@ def add_model_argument(parser):
     parser.add_argument('--beta_temp', type=float, default=0.2)
     parser.add_argument('--weight_ECR', type=float, default=100.0)
     parser.add_argument('--use_pretrainWE', action='store_true',
-                        default=True, help='Enable use_pretrainWE mode')
+                        default=False, help='Enable use_pretrainWE mode')
 
 def add_wete_argument(parser):
     parser.add_argument('--glove', type=str, default='glove.6B.100d.txt', help='embedding model name')
     parser.add_argument('--wete_beta', type=float, default=0.5)
     parser.add_argument('--wete_epsilon', type=float, default=0.1)
-    parser.add_argument('--init_alpha', type=bool, default=True)
+    parser.add_argument('--init_alpha', action='store_true', default=False)
 
 
 def add_training_argument(parser):
+    parser.add_argument('--use_kaggle', action='store_true', default=False)
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--finetune_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=200,
@@ -59,14 +60,12 @@ def add_training_argument(parser):
                             currently support: step', default='StepLR')
     parser.add_argument('--lr_step_size', type=int, default=125,
                         help='step size for learning rate scheduler')
+    parser.add_argument('--finetune', action='store_true', default=False)
+    parser.add_argument('--checkpoint_path', type=str, default=None,
+                        help='Path to checkpoint file to resume training')
 
 def add_eval_argument(parser):
     parser.add_argument('--tune_SVM', action='store_true', default=False)
-
-
-def add_checkpoint_argument(parser):
-    parser.add_argument('--checkpoint_path', type=str, default=None,
-                        help='Path to checkpoint file to resume training')
     
     
 def save_config(args, path):
