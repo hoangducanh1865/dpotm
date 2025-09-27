@@ -2,7 +2,7 @@ import numpy as np
 import logging
 
 
-def print_topic_words(beta, vocab, num_top_words):
+def print_topic_words(beta, vocab, num_top_words, print_topic=True):
     logger = logging.getLogger('main')
     topic_str_list = list()
     topic_indices_list = list()
@@ -13,6 +13,7 @@ def print_topic_words(beta, vocab, num_top_words):
         topic_str = ' '.join(topic_words)
         topic_str_list.append(topic_str)
         topic_indices_list.append(top_word_indices.tolist())
-        print('Topic {}: {}'.format(i, topic_str))
-        logger.info('Topic {}: {}'.format(i, topic_str))
+        if print_topic:
+            print('Topic {}: {}'.format(i, topic_str))
+            logger.info('Topic {}: {}'.format(i, topic_str))
     return topic_str_list, topic_indices_list

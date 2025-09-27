@@ -1,5 +1,4 @@
 import argparse
-from utils.configs import Configs as cfg 
 
 
 def new_parser(name=None):
@@ -19,6 +18,7 @@ def add_logging_argument(parser):
 def add_model_argument(parser):
     parser.add_argument('--model', type=str, default='ECRTM') # ['ECRTM']
     parser.add_argument('--num_topics', type=int, default=50)
+    parser.add_argument('--num_top_words', type=int, default=20)
     parser.add_argument('--num_groups', type=int, default=20)
     parser.add_argument('--dropout', type=float, default=0.2)
     parser.add_argument('--hidden_dim_1', type=int, default=384)
@@ -52,19 +52,22 @@ def add_training_argument(parser):
                         help='batch size')
     parser.add_argument('--lr', type=float, default=0.002,
                         help='learning rate')
-    parser.add_argument('--finetune_lr', type=float, default=0.002, # [0.0001, 0.0005, 0.001, 0.002]
-                        help='fine-tune learning rate')
-    parser.add_argument('--device', type=str, default='cpu',
-                        help='device to run the model, cuda or cpu')
+    '''parser.add_argument('--finetune_lr', type=float, default=0.002, # [0.0001, 0.0005, 0.001, 0.002]
+                        help='fine-tune learning rate')'''
+    parser.add_argument('--device', type=str, default='cpu')
     parser.add_argument('--seed', type=int, default=0, help='random seed')
     parser.add_argument('--lr_scheduler', type=str,
                         help='learning rate scheduler, dont use if not needed, \
                             currently support: step', default='StepLR')
     parser.add_argument('--lr_step_size', type=int, default=125,
                         help='step size for learning rate scheduler')
-    parser.add_argument('--finetune', action='store_true', default=False)
+    parser.add_argument('--finetune', action='store_true', default=True)
     parser.add_argument('--checkpoint_path', type=str, default=None,
                         help='Path to checkpoint file to resume training')
+    parser.add_argument('--loss_dpo_calculation_method', type=str, default='multiply') # ['multiply', 'hard_negative', 'hard_positive', 'combined_hard']
+    parser.add_argument('--use_jaccard', action='store_true', default=False)
+    parser.add_argument('--loss_dpo_type', type=str, default='bradley_terry') # ['bradley_terry', 'plackett_luce']
+
 
 def add_eval_argument(parser):
     parser.add_argument('--tune_SVM', action='store_true', default=False)

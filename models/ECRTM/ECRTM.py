@@ -5,6 +5,8 @@ from torch import nn
 import torch.nn.functional as F
 from .ECR import ECR
 from utils.configs import Configs as cfg
+from utils import static_utils
+from utils.preference_dataset_creator import PreferenceDatasetCreator
 import json
 
 
@@ -14,13 +16,15 @@ class ECRTM(nn.Module):
 
         Xiaobao Wu, Xinshuai Dong, Thong Thanh Nguyen, Anh Tuan Luu.
     '''
-    def __init__(self, args, vocab_size, num_topics=50, en_units=200, dropout=0., pretrained_WE=None, embed_size=200, beta_temp=0.2, weight_loss_ECR=100.0, sinkhorn_alpha=20.0, sinkhorn_max_iter=1000, current_run_dir=None):
+    def __init__(self, args, vocab, vocab_size, num_topics=50, en_units=200, dropout=0., pretrained_WE=None, embed_size=200, beta_temp=0.2, weight_loss_ECR=100.0, sinkhorn_alpha=20.0, sinkhorn_max_iter=1000, current_run_dir=None):
         super().__init__()
 
-        self.is_finetuing = False
+        self.is_finetuning = False
         self.device = cfg.DEVICE
+        self.vocab = vocab
         self.vocab_size = vocab_size
         self.num_topics = num_topics
+        self.num_top_words = args.num_top_words
         self.beta_temp = beta_temp
         self.current_run_dir = current_run_dir
         
@@ -31,6 +35,15 @@ class ECRTM(nn.Module):
         
         self.weight_dpo = args.weight_dpo
         self.weight_reg = args.weight_reg
+        
+        # Methods to calculate DPO loss
+        self.loss_dpo_calculation_method = args.loss_dpo_calculation_method
+        self.use_jaccard = args.use_jaccard
+        self.loss_dpo_type = args.loss_dpo_type
+        self.count_drift_topics = 0
+        
+        # for Jaccard Overlap method
+        self.beta_prev = None
 
         self.a = 1 * np.ones((1, num_topics)).astype(np.float32)
         self.mu2 = nn.Parameter(torch.as_tensor((np.log(self.a).T - np.mean(np.log(self.a), 1)).T))
@@ -130,42 +143,217 @@ class ECRTM(nn.Module):
     def get_loss_dpo(self):
         if self.preference_dataset is None:
             self.load_preference_dataset()
-            
+                
         beta = self.get_beta()
-        
-        k_indices, w_plus_indices, w_minus_indices = [], [], []
-        
-        '''loss_DPO = []'''
-        for line in self.preference_dataset:
-            data = json.loads(line)
-            k = data['k']
-            '''w_plus_indices = data['w_plus_indices']
-            w_minus_indices = data['w_minus_indices']'''
             
-            for w_plus_idx in data['w_plus_indices']:
-                for w_minus_idx in data['w_minus_indices']:
-                    '''delta = beta[k, w_plus_idx] - beta[k, w_minus_idx]
-                    delta_ref = self.beta_ref[k, w_plus_idx] - self.beta_ref[k, w_minus_idx]
-                    loss_DPO_sample = -F.logsigmoid(delta - delta_ref)
-                    loss_DPO.append(loss_DPO_sample)'''
-                    k_indices.append(k)
-                    w_plus_indices.append(w_plus_idx)
-                    w_minus_indices.append(w_minus_idx)
-        
-        # Convert to tensor for parallel computing
-        k_indices = torch.tensor(k_indices, device=self.device, dtype=torch.int64)
-        w_plus_indices = torch.tensor(w_plus_indices, device=self.device, dtype=torch.int64)
-        w_minus_indices = torch.tensor(w_minus_indices, device=self.device, dtype=torch.int64)
-        
-        # Calculate delta(s)
-        deltas = beta[k_indices, w_plus_indices] - beta[k_indices, w_minus_indices]
-        deltas_ref = self.beta_ref[k_indices, w_plus_indices] - self.beta_ref[k_indices, w_minus_indices]
-        
-        loss_dpo = -F.sigmoid(deltas - deltas_ref)
-        
-        return loss_dpo
-        
-        '''return torch.stack(loss_DPO).mean()'''
+        if self.loss_dpo_type == 'bradley_terry':
+            
+            if self.use_jaccard == True:
+                '''
+                This loop check if at least one word in top-words has just drift, then create a new preference dataset.
+                '''
+                
+                # Detach to prevent gradient tracking
+                beta_curr = beta.detach().cpu().numpy()
+                
+                if self.beta_prev is not None:
+                    '''
+                    If self.beta_prev is not None then check if half of the topics have drift (at least one top-word changed).
+                    If it is, then we will create a new preference dataset.
+                    '''
+                    # TODO
+                    # Take current top word indices for k topics 
+                    _, top_word_indices_list_curr = static_utils.print_topic_words(beta_curr, self.vocab, self.num_top_words, False)
+                    _, top_word_indices_list_prev = static_utils.print_topic_words(self.beta_prev, self.vocab, self.num_top_words, False)
+                    
+                    # Check drifted topics
+                    drift_topics = []
+                    for k in range(self.num_topics):
+                        set_top_word_indices_curr = set(top_word_indices_list_curr[k])
+                        set_top_word_indices_prev = set(top_word_indices_list_prev[k])
+                        
+                        # Calculate Jaccard Overlap
+                        intersection = len(set_top_word_indices_curr.intersection(set_top_word_indices_prev))
+                        union = len(set_top_word_indices_curr.union(set_top_word_indices_prev))
+                        
+                        jaccard_ratio = intersection / union
+                        
+                        # If Jaccard ratio is not 1.0, this topic has drifted
+                        if jaccard_ratio < 1.0:
+                            drift_topics.append(k)
+                    
+                    # If there are more than 5/50 topics have drifted, we create a new preference dataset
+                    if len(drift_topics) >= 5:
+                        self.count_drift_topics += 1
+                        if self.count_drift_topics >= 5:
+                            self.count_drift_topics = 0
+                            preference_dataset_creator = PreferenceDatasetCreator(dir_path=self.current_run_dir, num_top_words=self.num_top_words)
+                            preference_dataset_creator.create()
+                            self.load_preference_dataset()
+                    
+                else:
+                    self.beta_prev = beta_curr
+            
+            # Indices for preference dataset
+            k_indices, w_plus_indices, w_minus_indices = [], [], []
+            
+            if self.loss_dpo_calculation_method == 'multiply':
+                
+                for line in self.preference_dataset:
+                    data = json.loads(line)
+                    k = data['k']
+                    
+                    for w_plus_idx in data['w_plus_indices']:
+                        for w_minus_idx in data['w_minus_indices']:
+                            k_indices.append(k)
+                            w_plus_indices.append(w_plus_idx)
+                            w_minus_indices.append(w_minus_idx)
+            
+            elif self.loss_dpo_calculation_method == 'hard_negative':
+                '''
+                We should use this block since in topic model, there are some cases where some stop words can pass the 
+                data preprocessing phase, and they get very high beta score -> hard negative words.
+                '''
+                for line in self.preference_dataset:
+                    data = json.loads(line)
+                    k = data['k']
+                    
+                    # Find the index of the hardest negative word (the bad word which has highest beta score)
+                    hardest_w_minus_idx = -1
+                    max_score = -float('inf')
+                    
+                    # Detach beta score to prevent gradient tracking
+                    beta_k_detached = beta[k].detach()
+                    
+                    for w_minus_idx in data['w_minus_indices']:
+                        score = beta_k_detached[w_minus_idx]
+                        
+                        if score > max_score:
+                            max_score = score
+                            hardest_w_minus_idx = w_minus_idx
+                    
+                    # If there is at least one bad word <=> preference dataset is not None
+                    if hardest_w_minus_idx != -1:
+                        for w_plus_idx in data['w_plus_indices']:
+                            k_indices.append(k)
+                            w_plus_indices.append(w_plus_idx)
+                            w_minus_indices.append(hardest_w_minus_idx)
+            
+            elif self.loss_dpo_calculation_method == 'hard_positive':
+                for line in self.preference_dataset:
+                    data = json.loads(line)
+                    k = data['k']
+                    
+                    # Find the index of the hardest positve word (the good word which has loweset beta score)
+                    hardest_w_plus_idx = -1
+                    min_score = float('inf')
+                    
+                    # Detach beta score to prevent gradient tracking
+                    beta_k_detached = beta[k].detach()
+                    
+                    for w_plus_idx in data['w_plus_indices']:
+                        score = beta_k_detached[w_plus_idx]
+                        
+                        if score < min_score:
+                            min_score = score
+                            hardest_w_plus_idx = w_plus_idx
+                    
+                    # If there is at least one good word <=> preference dataset is not None
+                    if hardest_w_plus_idx != -1:
+                        for w_minus_idx in data['w_minus_indices']:
+                            k_indices.append(k)
+                            w_plus_indices.append(hardest_w_plus_idx)
+                            w_minus_indices.append(w_minus_idx)
+            
+            elif self.loss_dpo_calculation_method == 'combined_hard':
+                for line in self.preference_dataset:
+                    data = json.loads(line)
+                    k = data['k']
+                    
+                    # Find the index of the hardest negative word (the bad word which has highest beta score)
+                    hardest_w_minus_idx = -1
+                    max_score = -float('inf')
+                    
+                    # Find the index of the hardest positve word (the good word which has loweset beta score)
+                    hardest_w_plus_idx = -1
+                    min_score = float('inf')
+                    
+                    # Detach beta score to prevent gradient tracking
+                    beta_k_detached = beta[k].detach()
+                    
+                    for w_minus_idx in data['w_minus_indices']:
+                        score = beta_k_detached[w_minus_idx]
+                        
+                        if score > max_score:
+                            max_score = score
+                            hardest_w_minus_idx = w_minus_idx
+                    
+                    for w_plus_idx in data['w_plus_indices']:
+                        score = beta_k_detached[w_plus_idx]
+                        
+                        if score < min_score:
+                            min_score = score
+                            hardest_w_plus_idx = w_plus_idx
+                            
+                    # If there is at least one bad word <=> preference dataset is not None
+                    if hardest_w_minus_idx != -1:
+                        for w_plus_idx in data['w_plus_indices']:
+                            k_indices.append(k)
+                            w_plus_indices.append(w_plus_idx)
+                            w_minus_indices.append(hardest_w_minus_idx)
+                    
+                    # If there is at least one good word <=> preference dataset is not None
+                    if hardest_w_plus_idx != -1:
+                        for w_minus_idx in data['w_minus_indices']:
+                            k_indices.append(k)
+                            w_plus_indices.append(hardest_w_plus_idx)
+                            w_minus_indices.append(w_minus_idx)
+                
+            else:
+                raise NotImplementedError('Loss DPO calculation method not supported')   
+                            
+            # If preference data is not None
+            if len(k_indices) == 0:
+                return torch.tensor(0.0, device=self.device)
+                
+            # Convert to tensor for parallel computing
+            k_indices = torch.tensor(k_indices, device=self.device, dtype=torch.int64)
+            w_plus_indices = torch.tensor(w_plus_indices, device=self.device, dtype=torch.int64)
+            w_minus_indices = torch.tensor(w_minus_indices, device=self.device, dtype=torch.int64)
+            
+            # Calculate delta(s)
+            deltas = beta[k_indices, w_plus_indices] - beta[k_indices, w_minus_indices]
+            deltas_ref = self.beta_ref[k_indices, w_plus_indices] - self.beta_ref[k_indices, w_minus_indices]
+            
+            loss_dpo = -F.logsigmoid(deltas - deltas_ref).mean()
+            
+            return loss_dpo
+
+        elif self.loss_dpo_type == 'plackett_luce':
+            loss_dpo = []
+            
+            for line in self.preference_dataset:
+                data = json.loads(line)
+                k = data['k']
+                w_indices = data['w_indices']
+                
+                loss_dpo_per_topic = torch.tensor(1.0, device=self.device)
+                for i in range(self.num_top_words):
+                    denominator = torch.tensor(0.0, device=self.device)
+                    for j in range(i, self.num_top_words):
+                        delta = beta[k][w_indices[j]] - beta[k][w_indices[i]]
+                        delta_ref = self.beta_ref[k][w_indices[j]] - self.beta_ref[k][w_indices[i]]
+                        denominator += torch.exp(delta - delta_ref)
+                        
+                    loss_dpo_per_topic *= 1.0 / denominator
+                    
+                loss_dpo.append(loss_dpo_per_topic)
+            
+            loss_dpo = torch.stack(loss_dpo)
+            loss_dpo = -torch.log(loss_dpo).mean()
+                        
+            return loss_dpo
+            
 
     def get_loss_regularization(self):
         beta = self.get_beta()
@@ -177,17 +365,18 @@ class ECRTM(nn.Module):
         return cost
 
     def forward(self, input):
-        if not self.is_finetuing:
-            bow = input["data"]
-            theta, loss_KL = self.encode(input['data'])
-            beta = self.get_beta()
+        bow = input["data"]
+        theta, loss_KL = self.encode(input['data'])
+        beta = self.get_beta()
 
-            recon = F.softmax(self.decoder_bn(torch.matmul(theta, beta)), dim=-1)
-            recon_loss = -(bow * recon.log()).sum(axis=1).mean()
+        recon = F.softmax(self.decoder_bn(torch.matmul(theta, beta)), dim=-1)
+        recon_loss = -(bow * recon.log()).sum(axis=1).mean()
 
-            loss_TM = recon_loss + loss_KL
+        loss_TM = recon_loss + loss_KL
 
-            loss_ECR = self.get_loss_ECR()
+        loss_ECR = self.get_loss_ECR()
+        
+        if not self.is_finetuning:
             
             loss = loss_TM + loss_ECR
 
@@ -196,20 +385,8 @@ class ECRTM(nn.Module):
                 'loss_TM': loss_TM,
                 'loss_ECR': loss_ECR
             }
-
-            return rst_dict
+        
         else:
-            bow = input["data"]
-            theta, loss_KL = self.encode(input['data'])
-            beta = self.get_beta()
-
-            recon = F.softmax(self.decoder_bn(torch.matmul(theta, beta)), dim=-1)
-            recon_loss = -(bow * recon.log()).sum(axis=1).mean()
-
-            loss_TM = recon_loss + loss_KL
-
-            loss_ECR = self.get_loss_ECR()
-            
             loss_DPO = self.get_loss_dpo()
             
             loss_regularization = self.get_loss_regularization()
@@ -224,4 +401,5 @@ class ECRTM(nn.Module):
                 'loss_regularization': loss_regularization
             }
 
-            return rst_dict
+        return rst_dict
+        

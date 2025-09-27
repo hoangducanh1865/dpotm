@@ -12,9 +12,10 @@ from time import time
 
 
 class BasicTrainer:
-    def __init__(self, model, epochs, learning_rate=0.002, batch_size=200, use_lr_scheduler=None, lr_step_size=125, log_interval=5, device="cuda", checkpoint_dir=None):
+    def __init__(self, model, epochs, learning_rate=0.002, batch_size=200, use_lr_scheduler=None, lr_step_size=125, log_interval=5, device="cuda", args=None, checkpoint_dir=None):
         self.model = model
         self.epochs = epochs
+        self.finetune_epochs = args.finetune_epochs
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.lr_step_size = lr_step_size
@@ -49,10 +50,14 @@ class BasicTrainer:
 
         return top_words, train_theta
 
-    def train(self, dataset_handler, verbose=False):
+    def train(self, dataset_handler, start_epoch, end_epoch, verbose=False):
+        """
+        Combined training method that handles both regular training and DPO fine-tuning
+        """
         data_size = len(dataset_handler.train_dataloader.dataset)
-
-        for epoch in tqdm(range(1, self.epochs + 1)):
+        
+        # Regular training phase
+        for epoch in tqdm(range(start_epoch, end_epoch + 1)):
             self.model.train()
             loss_rst_dict = defaultdict(float)
             # wandb.log({'epoch': epoch})
@@ -87,9 +92,10 @@ class BasicTrainer:
                 print(output_log)
                 self.logger.info(output_log)
             
-            if epoch == 400 or epoch == 500:
+            if epoch == 400 or epoch == 500 or epoch == 600:
                 self.save_checkpoint(epoch)
-
+        
+        
     def test(self, input_data):
         data_size = input_data.shape[0]
         theta = list()
@@ -124,13 +130,14 @@ class BasicTrainer:
         np.save(os.path.join(dir_path, 'beta.npy'), beta)
         return beta
 
-    def save_top_words(self, vocab, num_top_words, dir_path):
+    def save_top_words(self, vocab, num_top_words, dir_path, suffix=''):
         top_words, top_word_indices = self.export_top_words(vocab, num_top_words)
-        with open(os.path.join(dir_path, f'top_words_{num_top_words}.txt'), 'w') as f:
+        
+        with open(os.path.join(dir_path, f'{suffix}top_words_{num_top_words}.txt'), 'w') as f:
             for i, words in enumerate(top_words):
                 f.write(words + '\n')
     
-        with open(os.path.join(dir_path, f'top_words_{num_top_words}.jsonl'), 'w') as f:
+        with open(os.path.join(dir_path, f'{suffix}top_words_{num_top_words}.jsonl'), 'w') as f:
             for k, (words, indices) in enumerate(zip(top_words, top_word_indices)):
                 words_list = words.split()
                 top_words_with_indices = []
@@ -208,12 +215,10 @@ class BasicTrainer:
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
-            
-        start_epoch = checkpoint['epoch'] + 1
         
+        start_epoch = checkpoint['epoch'] + 1
         self.logger.info(f'Checkpoint loaded: {checkpoint_path}, resuming at epoch {start_epoch}')
         
-        return start_epoch
         
 class FastBasicTrainer:
     def __init__(self, model, epochs=200, learning_rate=0.002, batch_size=200, lr_scheduler=None, lr_step_size=125, log_interval=5, device = "cuda"):

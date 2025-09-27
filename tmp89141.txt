@@ -1,0 +1,10 @@
+2025-09-26 22:40:31,972 ERROR [org.aksw.palmetto.Palmetto] - <Couldn't open lucene index. Aborting.>
+org.apache.lucene.store.NoSuchDirectoryException: directory '/kaggle/input/wikipedia/wikipedia_bd' does not exist
+	at org.apache.lucene.store.FSDirectory.listAll(FSDirectory.java:218)
+	at org.apache.lucene.store.FSDirectory.listAll(FSDirectory.java:242)
+	at org.apache.lucene.index.SegmentInfos$FindSegmentsFile.run(SegmentInfos.java:712)
+	at org.apache.lucene.index.StandardDirectoryReader.open(StandardDirectoryReader.java:52)
+	at org.apache.lucene.index.DirectoryReader.open(DirectoryReader.java:66)
+	at org.aksw.palmetto.corpus.lucene.WindowSupportingLuceneCorpusAdapter.create(WindowSupportingLuceneCorpusAdapter.java:55)
+	at org.aksw.palmetto.Palmetto.getCorpusAdapter(Palmetto.java:92)
+	at org.aksw.palmetto.Palmetto.main(Palmetto.java:67)

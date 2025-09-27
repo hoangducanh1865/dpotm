@@ -6,13 +6,17 @@ from utils.configs import Configs as cfg
 
 
 class PreferenceDatasetCreator:
-    def __init__(self, dir_path):
+    def __init__(self, dir_path, num_top_words):
         load_dotenv()
         self.preference_dataset_path = os.path.join(dir_path, 'preference_dataset.jsonl')
-        self.top_words_10_path = os.path.join(dir_path, 'top_words_10.jsonl')
-        self.top_words_15_path = os.path.join(dir_path, 'top_words_15.jsonl')
-        self.top_words_20_path = os.path.join(dir_path, 'top_words_20.jsonl')
-        self.top_words_25_path = os.path.join(dir_path, 'top_words_25.jsonl')
+        if num_top_words == 10:
+            self.top_words_path = os.path.join(dir_path, 'top_words_10.jsonl')
+        elif num_top_words == 15:
+            self.top_words_path = os.path.join(dir_path, 'top_words_15.jsonl')
+        elif num_top_words == 20:
+            self.top_words_path = os.path.join(dir_path, 'top_words_20.jsonl')
+        elif num_top_words == 25:
+            self.top_words_path = os.path.join(dir_path, 'top_words_25.jsonl')
         self.model = cfg.LLM_MODEL
         self.llm = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         self.system_prompt = cfg.SYSTEM_PROMPT
@@ -43,7 +47,7 @@ class PreferenceDatasetCreator:
                 raise TypeError(f"JSON parsing failed for line {k}: {raw_data}")
             return data
             
-        with open(self.top_words_25_path, 'r', encoding='utf-8') as infile, open(self.preference_dataset_path, 'w', encoding='utf-8') as outfile:
+        with open(self.top_words_path, 'r', encoding='utf-8') as infile, open(self.preference_dataset_path, 'w', encoding='utf-8') as outfile:
             for k, line in enumerate(infile):
                 data = process_line(k, line)
                 outfile.write(json.dumps(data, ensure_ascii=False) + '\n')
