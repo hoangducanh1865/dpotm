@@ -93,6 +93,7 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
             top_words = top_words.split() # string of words to list of words
             res.append(top_words)
         return res 
+    
     IBRO_10 = evaluations.buubyyboo_dth(top_words=process_top_words(top_words_10), topk=10, weight=0.9)
     IBRO_15 = evaluations.buubyyboo_dth(top_words=process_top_words(top_words_15), topk=15, weight=0.9)
     print(f'IBRO_10: {IBRO_10:.4f}')
