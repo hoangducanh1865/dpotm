@@ -1,9 +1,10 @@
 python main.py \
-  --dataset 'BBC_new' \
+  --dataset '20NG' \
   --plm_model 'all-mpnet-base-v2' \
   --wandb_prj 'topmost' \
   --model 'ECRTM' \
   --num_topics 50 \
+  --num_top_words 15 \
   --num_groups 20 \
   --dropout 0.2 \
   --hidden_dim_1 384 \
@@ -14,24 +15,25 @@ python main.py \
   --weight_GR 1.0 \
   --alpha_GR 5.0 \
   --weight_InfoNCE 50.0 \
-  --beta_temp 0.2 \
-  --weight_ECR 350.0 \
+  --beta_temp 0.12 \
+  --weight_ECR 100.0 \
   --use_pretrainWE \
-  --weight_dpo 0.5 \
-  --weight_reg 0.5 \
+  --weight_dpo 3.0 \
+  --weight_reg 0.3 \
   --glove 'glove.6B.100d.txt' \
   --wete_beta 0.5 \
   --wete_epsilon 0.1 \
   --init_alpha \
   --use_kaggle \
   --epochs 500 \
-  --finetune_epochs 100 \
+  --finetune_epochs 200 \
   --batch_size 200 \
   --lr 0.002 \
-  --finetune_lr 0.002 \
   --device 'cuda' \
   --seed 0 \
   --lr_scheduler 'StepLR' \
-  --lr_step_size 125 \
+  --lr_step_size 150 \
   --finetune \
+  --loss_dpo_calculation_method 'hard_positive' \
+  --loss_dpo_type 'bradley_terry' \
   --tune_SVM
