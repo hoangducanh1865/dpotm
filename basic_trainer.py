@@ -11,10 +11,12 @@ import scipy
 from time import time
 
 
+
 class BasicTrainer:
-    def __init__(self, model, epochs, learning_rate=0.002, batch_size=200, use_lr_scheduler=None, lr_step_size=125, log_interval=5, device="cuda", checkpoint_dir=None):
+    def __init__(self, model, epochs, learning_rate=0.002, batch_size=200, use_lr_scheduler=None, lr_step_size=125, log_interval=5, device="cuda", args=None, checkpoint_dir=None, preference_dataset_creator=None):
         self.model = model
         self.epochs = epochs
+        self.finetune_epochs = args.finetune_epochs
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.lr_step_size = lr_step_size
@@ -22,6 +24,7 @@ class BasicTrainer:
         self.device = device
         self.checkpoint_dir = checkpoint_dir
         self.optimizer = self.make_optimizer()
+        self.preference_dataset_creator = preference_dataset_creator
         if use_lr_scheduler:
             self.lr_scheduler = self.make_lr_scheduler()
 
@@ -49,17 +52,40 @@ class BasicTrainer:
 
         return top_words, train_theta
 
-    def train(self, dataset_handler, verbose=False):
+    def train(self, dataset_handler, start_epoch, end_epoch, verbose=False):
+        """
+        Combined training method that handles both regular training and DPO fine-tuning
+        """
         data_size = len(dataset_handler.train_dataloader.dataset)
-
-        for epoch in tqdm(range(1, self.epochs + 1)):
+        
+        # Regular training phase
+        for epoch in tqdm(range(start_epoch, end_epoch + 1)):
+            
             self.model.train()
             loss_rst_dict = defaultdict(float)
             # wandb.log({'epoch': epoch})
+            
+            if self.model.is_finetuning:
+                # Dynamic DPO weight adjustment
+                if epoch == 501:
+                    self.model.weight_dpo = 3.0
+                    self.model.weight_reg = 0.1
+                    self.preference_dataset_creator.create()
+                elif epoch == 551:
+                    self.model.weight_dpo = 2.5
+                    self.model.weight_reg = 0.2
+                    self.preference_dataset_creator.create()
+                elif epoch == 601:
+                    self.model.weight_dpo = 2.0
+                    self.model.weight_reg = 0.5
+                    self.preference_dataset_creator.create()
+                elif epoch == 651:
+                    self.model.weight_dpo = 1.5
+                    self.model.weight_reg = 1.0
+                    self.preference_dataset_creator.create()
 
-            for batch_data in dataset_handler.train_dataloader:
-
-                rst_dict = self.model(batch_data)
+            for batch, batch_data in enumerate(dataset_handler.train_dataloader):
+                rst_dict = self.model(batch_data, epoch, batch)
                 batch_loss = rst_dict['loss']
 
                 self.optimizer.zero_grad()
@@ -87,9 +113,10 @@ class BasicTrainer:
                 print(output_log)
                 self.logger.info(output_log)
             
-            if epoch == 400 or epoch == 500:
+            if epoch == 400 or epoch == 500 or epoch == 600 or epoch == 700:
                 self.save_checkpoint(epoch)
-
+        
+        
     def test(self, input_data):
         data_size = input_data.shape[0]
         theta = list()
@@ -124,13 +151,14 @@ class BasicTrainer:
         np.save(os.path.join(dir_path, 'beta.npy'), beta)
         return beta
 
-    def save_top_words(self, vocab, num_top_words, dir_path):
+    def save_top_words(self, vocab, num_top_words, dir_path, suffix=''):
         top_words, top_word_indices = self.export_top_words(vocab, num_top_words)
-        with open(os.path.join(dir_path, f'top_words_{num_top_words}.txt'), 'w') as f:
+        
+        with open(os.path.join(dir_path, suffix + f'top_words_{num_top_words}.txt'), 'w') as f:
             for i, words in enumerate(top_words):
                 f.write(words + '\n')
     
-        with open(os.path.join(dir_path, f'top_words_{num_top_words}.jsonl'), 'w') as f:
+        with open(os.path.join(dir_path, suffix + f'top_words_{num_top_words}.jsonl'), 'w') as f:
             for k, (words, indices) in enumerate(zip(top_words, top_word_indices)):
                 words_list = words.split()
                 top_words_with_indices = []
@@ -208,12 +236,10 @@ class BasicTrainer:
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
-            
-        start_epoch = checkpoint['epoch'] + 1
         
+        start_epoch = checkpoint['epoch'] + 1
         self.logger.info(f'Checkpoint loaded: {checkpoint_path}, resuming at epoch {start_epoch}')
         
-        return start_epoch
         
 class FastBasicTrainer:
     def __init__(self, model, epochs=200, learning_rate=0.002, batch_size=200, lr_scheduler=None, lr_step_size=125, log_interval=5, device = "cuda"):
