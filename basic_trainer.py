@@ -13,7 +13,7 @@ from time import time
 
 
 class BasicTrainer:
-    def __init__(self, model, epochs, learning_rate=0.002, batch_size=200, use_lr_scheduler=None, lr_step_size=125, log_interval=5, device="cuda", args=None, checkpoint_dir=None, preference_dataset_creator=None):
+    def __init__(self, model, epochs, learning_rate=0.002, batch_size=200, use_lr_scheduler=None, lr_step_size=125, log_interval=5, device="cuda", args=None, checkpoint_dir=None, llm=None, dataset=None, current_run_dir=None, sentence_embedder=None):
         self.model = model
         self.epochs = epochs
         self.finetune_epochs = args.finetune_epochs
@@ -24,10 +24,12 @@ class BasicTrainer:
         self.device = device
         self.checkpoint_dir = checkpoint_dir
         self.optimizer = self.make_optimizer()
-        self.preference_dataset_creator = preference_dataset_creator
+        self.llm = llm
         if use_lr_scheduler:
             self.lr_scheduler = self.make_lr_scheduler()
-
+        self.dataset = dataset
+        self.current_run_dir = current_run_dir
+        self.sentence_embedder = sentence_embedder
         self.logger = logging.getLogger('main')
 
     def make_optimizer(self):
@@ -69,18 +71,43 @@ class BasicTrainer:
                 # Dynamic DPO weight adjustment
                 if epoch == 501:
                     self.model.weight_dpo = 3.0
-                    self.preference_dataset_creator.create()
+                    self.reload_theta_and_top_words_files()
+                    self.llm.generate_topic_descriptions()
+                    self.sentence_embedder.embed_topic_descriptions()
+                    self.llm.generate_topic_word_preference_dataset()
+                    self.llm.generate_doc_topic_preference_dataset()
                 elif epoch == 551:
                     self.model.weight_dpo = 2.5
-                    self.preference_dataset_creator.create()
+                    self.reload_theta_and_top_words_files()
+                    self.llm.generate_topic_descriptions()
+                    self.sentence_embedder.embed_topic_descriptions()
+                    self.llm.generate_topic_word_preference_dataset()
+                    self.llm.generate_doc_topic_preference_dataset()
                 elif epoch == 601:
                     self.model.weight_dpo = 2.0
-                    self.preference_dataset_creator.create()
+                    self.reload_theta_and_top_words_files()
+                    self.llm.generate_topic_descriptions()
+                    self.sentence_embedder.embed_topic_descriptions()
+                    self.llm.generate_topic_word_preference_dataset()
+                    self.llm.generate_doc_topic_preference_dataset()
                 elif epoch == 651:
                     self.model.weight_dpo = 1.5
-                    self.preference_dataset_creator.create()
+                    self.reload_theta_and_top_words_files()
+                    self.llm.generate_topic_descriptions()
+                    self.sentence_embedder.embed_topic_descriptions()
+                    self.llm.generate_topic_word_preference_dataset()
+                    self.llm.generate_doc_topic_preference_dataset()
 
             for batch, batch_data in enumerate(dataset_handler.train_dataloader):
+                batch_size = len(batch_data['data'])
+                
+                start_idx = batch * dataset_handler.train_dataloader.batch_size
+                actual_batch_size = min(batch_size, data_size - start_idx)
+                end_idx = start_idx + actual_batch_size
+                
+                batch_indices = torch.arange(start_idx, end_idx, device=self.device)
+                batch_data['indices'] = batch_indices
+                
                 rst_dict = self.model(batch_data, epoch, batch)
                 batch_loss = rst_dict['loss']
 
@@ -132,9 +159,9 @@ class BasicTrainer:
         beta = self.model.get_beta().detach().cpu().numpy()
         return beta
 
-    def export_top_words(self, vocab, num_top_words):
+    def export_top_words(self, vocab, num_top_words, print_topic=True):
         beta = self.export_beta()
-        top_words, top_word_indices = static_utils.print_topic_words(beta, vocab, num_top_words)
+        top_words, top_word_indices = static_utils.print_topic_words(beta, vocab, num_top_words, print_topic)
         return top_words, top_word_indices
 
     def export_theta(self, dataset_handler):
@@ -147,8 +174,8 @@ class BasicTrainer:
         np.save(os.path.join(dir_path, 'beta.npy'), beta)
         return beta
 
-    def save_top_words(self, vocab, num_top_words, dir_path, suffix=''):
-        top_words, top_word_indices = self.export_top_words(vocab, num_top_words)
+    def save_top_words(self, vocab, num_top_words, dir_path, suffix='', print_topic=True):
+        top_words, top_word_indices = self.export_top_words(vocab, num_top_words, print_topic)
         
         with open(os.path.join(dir_path, suffix + f'top_words_{num_top_words}.txt'), 'w') as f:
             for i, words in enumerate(top_words):
@@ -235,7 +262,17 @@ class BasicTrainer:
         
         start_epoch = checkpoint['epoch'] + 1
         self.logger.info(f'Checkpoint loaded: {checkpoint_path}, resuming at epoch {start_epoch}')
-        
+    
+    def reload_theta_and_top_words_files(self):
+        train_theta, test_theta = self.save_theta(self.dataset, self.current_run_dir)
+        top_words_10 = self.save_top_words(
+            self.dataset.vocab, 10, self.current_run_dir, print_topic=False)
+        top_words_15 = self.save_top_words(
+            self.dataset.vocab, 15, self.current_run_dir, print_topic=False)
+        top_words_20 = self.save_top_words(
+            self.dataset.vocab, 20, self.current_run_dir, print_topic=False)
+        top_words_25 = self.save_top_words(
+            self.dataset.vocab, 25, self.current_run_dir, print_topic=False)
         
 class FastBasicTrainer:
     def __init__(self, model, epochs=200, learning_rate=0.002, batch_size=200, lr_scheduler=None, lr_step_size=125, log_interval=5, device = "cuda"):

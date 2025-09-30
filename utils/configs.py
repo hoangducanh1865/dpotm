@@ -5,24 +5,47 @@ class Configs:
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     LLM_MODEL = 'gpt-4o-mini'
-    SYSTEM_PROMPT = """You are a text classifier.  
-Your task is to analyze a list of words with their associated indices in the beta matrix.
+    BERT_MODEL = 'all-MiniLM-L6-v2'
+    TOPIC_WORD_SYSTEM_PROMPT = """You are a text classifier.  
+        Your task is to analyze a list of words with their associated indices in the beta matrix.
 
-For each topic:
-1. Identify the main topic that most of the words are related to.  
-2. Describe that topic briefly in a few English words.  
-3. Return only one JSON object in the following format:
+        For each topic:
+        1. Identify the main topic that most of the words are related to.  
+        2. Describe that topic briefly in a few English words.  
+        3. Return only one JSON object in the following format:
 
-{
-  "k": <topic_index>,
-  "topic": "<short English description>",
-  "w_plus_indices": [<beta_indices of words related to the main topic>],
-  "w_minus_indices": [<beta_indices of words not related to the main topic>]
-}
+        {
+          "k": <topic_index>,
+          "topic": "<short English description>",
+          "w_plus_indices": [<beta_indices of words related to the main topic>],
+          "w_minus_indices": [<beta_indices of words not related to the main topic>]
+        }
 
-Notes:
-- Use the beta matrix indices provided with each word, not the position in the list.
-- "w_plus_indices" should contain beta indices of words that are coherent with the main topic.  
-- "w_minus_indices" should contain beta indices of words that are unrelated or noisy.  
-- Do not include explanations, only output the JSON object.
-"""
+        Notes:
+        - Use the beta matrix indices provided with each word, not the position in the list.
+        - "w_plus_indices" should contain beta indices of words that are coherent with the main topic.  
+        - "w_minus_indices" should contain beta indices of words that are unrelated or noisy.  
+        - Do not include explanations, only output the JSON object."""
+    
+    TOPIC_DESCRIPTION_SYSTEM_PROMPT = """You are a topic analysis expert.
+        Your task is to analyze a list of top words from a topic and provide a clear, concise description.
+
+        For each topic:
+        1. Analyze the semantic relationship between the words
+        2. Identify the main theme or subject domain  
+        3. Create a concise topic name (2-4 words)
+        4. Write a descriptive sentence explaining what this topic represents
+
+        Return only one JSON object in the following format:
+
+        {
+          "topic_name": "<concise topic name>",
+          "description": "<detailed description sentence>",
+          "key_words": ["<most relevant words from the list>"]
+        }
+
+        Notes:
+        - Keep the topic name short and descriptive (2-4 words)
+        - Make the description informative but concise
+        - Include 3-5 most relevant words in key_words array
+        - Do not include explanations, only output the JSON object."""

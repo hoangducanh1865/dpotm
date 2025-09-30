@@ -15,9 +15,10 @@ from models.CTM import CTM
 from models.ETM import ETM
 from models.ProdLDA import ProdLDA
 from models.WETE import WeTe
-from utils.preference_dataset_creator import PreferenceDatasetCreator
+from utils.llm import LLM
 from utils import config, log, miscellaneous, seed
 from utils.configs import Configs as cfg
+from utils.sentence_embedder import SentenceEmbedder
 
 
 RESULT_DIR = 'results'
@@ -100,7 +101,7 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
     print(f'IBRO_15: {IBRO_15:.4f}')
 
     # evaluating clustering
-    '''if read_labels:
+    if read_labels:
         clustering_results = evaluations.evaluate_clustering(
             test_theta, dataset.test_labels)
         print(f"NMI: ", clustering_results['NMI'])
@@ -108,10 +109,10 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
         wandb.log({"NMI": clustering_results['NMI']})
         wandb.log({"Purity": clustering_results['Purity']})
         logger.info(f"NMI: {clustering_results['NMI']}")
-        logger.info(f"Purity: {clustering_results['Purity']}")'''
+        logger.info(f"Purity: {clustering_results['Purity']}")
 
     # evaluate classification
-    '''if read_labels:
+    if read_labels:
         classification_results = evaluations.evaluate_classification(
             train_theta, test_theta, dataset.train_labels, dataset.test_labels, tune=args.tune_SVM)
         print(f"Accuracy: ", classification_results['acc'])
@@ -119,7 +120,7 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
         logger.info(f"Accuracy: {classification_results['acc']}")
         print(f"Macro-f1", classification_results['macro-F1'])
         wandb.log({"Macro-f1": classification_results['macro-F1']})
-        logger.info(f"Macro-f1: {classification_results['macro-F1']}")'''
+        logger.info(f"Macro-f1: {classification_results['macro-F1']}")
 
     # TC
     TC_15_list, TC_15 = evaluations.topic_coherence.TC_on_wikipedia(
@@ -248,9 +249,6 @@ if __name__ == "__main__":
     elif args.model == "WeTe":
         model = WeTe(vocab_size=dataset.vocab_size, vocab=dataset.vocab, num_topics=args.num_topics,device=args.device)
     model = model.to(args.device)
-    
-    # Preference dataset creator
-    preference_dataset_creator = PreferenceDatasetCreator(current_run_dir, args.num_top_words)
 
     # create a trainer
     if args.model == "FASTOPIC":
@@ -282,10 +280,10 @@ if __name__ == "__main__":
                                             device=args.device,
                                             args=args,
                                             checkpoint_dir=current_checkpoint_dir,
-                                            preference_dataset_creator=preference_dataset_creator)
+                                            dataset=dataset,
+                                            current_run_dir=current_run_dir)
 
-
-    # train the model
+    # train the 
     
     if args.model == "FASTOPIC":
         train_simple_embedding, train_theta = trainer.train(dataset)
@@ -309,9 +307,14 @@ if __name__ == "__main__":
     if args.finetune == False:
         wandb.finish()
         sys.exit(0)
+        
+    # LLM and Sentence Transformer models
+    trainer.model.is_finetuning = True
+    trainer.sentence_embedder = SentenceEmbedder(current_run_dir=current_run_dir, args=args)
+    trainer.sentence_embedder.embed_documents()
+    trainer.llm = LLM(current_run_dir, args.num_top_words, dataset.vocab, trainer.sentence_embedder)
     
     # Fine-tune model
-    model.is_finetuning = True
     trainer.train(dataset, args.epochs + 1, args.epochs + args.finetune_epochs) 
     beta = trainer.save_beta(current_run_dir)
     train_theta, test_theta = trainer.save_theta(dataset, current_run_dir)
