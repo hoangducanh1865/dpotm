@@ -16,7 +16,7 @@ python main.py \
   --alpha_GR 5.0 \
   --weight_InfoNCE 50.0 \
   --beta_temp 0.12 \
-  --weight_ECR 75.0 \
+  --weight_ECR 50.0 \
   --use_pretrainWE \
   --weight_dpo 3.0 \
   --weight_reg 0.5 \
