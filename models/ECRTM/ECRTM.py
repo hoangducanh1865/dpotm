@@ -1,3 +1,4 @@
+import json
 import os
 import numpy as np
 import torch
@@ -6,8 +7,7 @@ import torch.nn.functional as F
 from .ECR import ECR
 from utils.configs import Configs as cfg
 from utils import static_utils
-from utils.preference_dataset_creator import PreferenceDatasetCreator
-import json
+from utils.llm import LLM
 
 
 class ECRTM(nn.Module):
@@ -32,6 +32,11 @@ class ECRTM(nn.Module):
         self.beta_ref = None
         self.preference_dataset_path = None
         self.preference_dataset = None
+        
+        self.theta_ref_path = None
+        self.theta_ref = None
+        self.doc_topic_preference_dataset_path = None
+        self.doc_topic_preference_dataset = None
         
         self.weight_dpo = args.weight_dpo
         self.weight_reg = args.weight_reg
@@ -129,39 +134,43 @@ class ECRTM(nn.Module):
     
     def load_preference_dataset(self):
         self.preference_dataset_path = os.path.join(self.current_run_dir, 'preference_dataset.jsonl')
-        if self.preference_dataset is None:
-            self.preference_dataset = []
-            with open(self.preference_dataset_path, 'r') as f:
-                for line in f:
-                    self.preference_dataset.append(line)
-     
+        self.preference_dataset = []
+        with open(self.preference_dataset_path, 'r') as f:
+            for line in f:
+                self.preference_dataset.append(line)
+    
+    def load_doc_topic_preference_dataset(self):
+        self.doc_topic_preference_dataset_path = os.path.join(self.current_run_dir, 'doc_topic_preference_dataset.jsonl')
+        self.doc_topic_preference_dataset = []
+        with open(self.doc_topic_preference_dataset_path, 'r') as f:
+            for line in f:
+                self.doc_topic_preference_dataset.append(line)
+
     def load_preference_beta(self):   
-        # Also create reference beta and frozen it
+        # Load reference beta and froze it
         self.beta_ref_path = os.path.join(self.current_run_dir, 'beta.npy')
         self.beta_ref = torch.from_numpy(np.load(self.beta_ref_path)).float().to(self.device)
         self.beta_ref.requires_grad = False
+        
+    def load_preference_theta(self):
+        # Load reference theta and froze it
+        self.theta_ref_path = os.path.join(self.current_run_dir, 'train_theta.npy')
+        self.theta_ref = torch.from_numpy(np.load(self.theta_ref_path)).float().to(self.device)
+        self.theta_ref.requires_grad = False
     
-    def get_loss_dpo(self, epoch, batch):
+    def get_loss_dpo(self, beta, epoch, batch):
         if self.beta_ref is None:
-            '''self.load_preference_dataset()'''
             self.load_preference_beta()
         
-        # Create new preference dataset manually for robustness 
-        # and dynamically adjust DPO loss calculation method
+        # Create new preference dataset manually for robustness
         if epoch == 501 and batch == 0:
             self.load_preference_dataset()
-            self.loss_dpo_calculation_method = 'multiply'
         elif epoch == 551 and batch == 0:
             self.load_preference_dataset()
-            self.loss_dpo_calculation_method = 'combined_hard'
         elif epoch == 601 and batch == 0:
             self.load_preference_dataset()
-            self.loss_dpo_calculation_method = 'hard_negative'
         elif epoch == 651 and batch == 0:
             self.load_preference_dataset()
-            self.loss_dpo_calculation_method = 'combined_hard'
-        
-        beta = self.get_beta()
             
         if self.loss_dpo_type == 'bradley_terry':
             
@@ -204,8 +213,8 @@ class ECRTM(nn.Module):
                         self.count_drift_topics += 1
                         if self.count_drift_topics >= 5:
                             self.count_drift_topics = 0
-                            preference_dataset_creator = PreferenceDatasetCreator(dir_path=self.current_run_dir, num_top_words=self.num_top_words)
-                            preference_dataset_creator.create()
+                            llm = LLM(dir_path=self.current_run_dir, num_top_words=self.num_top_words)
+                            llm.generate_topic_word_preference_dataset()
                             self.load_preference_dataset()
                     
                 else:
@@ -370,11 +379,78 @@ class ECRTM(nn.Module):
             loss_dpo = -torch.log(loss_dpo).mean()
                         
             return loss_dpo
-            
 
-    def get_loss_regularization(self):
-        beta = self.get_beta()
+        else:
+            raise NotImplementedError('Loss DPO type not supported')
+            
+    def get_loss_doc_topic_dpo(self, theta, epoch, batch, batch_indices):
+        if self.theta_ref is None:
+            self.load_preference_theta()
+        
+        # Create new preference dataset manually for robustness
+        if epoch == 501 and batch == 0:
+            self.load_doc_topic_preference_dataset()
+        elif epoch == 551 and batch == 0:
+            self.load_doc_topic_preference_dataset()
+        elif epoch == 601 and batch == 0:
+            self.load_doc_topic_preference_dataset()
+        elif epoch == 651 and batch == 0:
+            self.load_doc_topic_preference_dataset()
+            
+        if self.loss_dpo_type == 'bradley_terry':
+            d_indices_batch, t_plus_indices, t_minus_indices = [], [], []
+            d_indices_global = [] # For accessing theta_ref
+            
+            batch_indices_set = set(batch_indices.cpu().numpy())
+            global_to_batch_idx = {global_idx.item(): batch_idx for batch_idx, global_idx in enumerate(batch_indices)}
+            
+            # Since number of topics is much smaller number of top words, we use simply Multiply method here to calculate Loss DPO
+            for line in self.doc_topic_preference_dataset:
+                data = json.loads(line)
+                doc_global_idx = data['d']
+                
+                # Only process documents which are in current batch
+                if doc_global_idx in batch_indices_set:
+                    doc_batch_idx = global_to_batch_idx[doc_global_idx]
+                    
+                    for t_plus_idx in data['t_plus_indices']:
+                        for t_minus_idx in data['t_minus_indices']:
+                            d_indices_batch.append(doc_batch_idx)
+                            d_indices_global.append(doc_global_idx)
+                            t_plus_indices.append(t_plus_idx)
+                            t_minus_indices.append(t_minus_idx)
+            
+            if len(d_indices_batch) == 0:
+                return torch.tensor(0.0, device=self.device)
+            
+            # Convert to tensor for parallel computing
+            d_indices_batch = torch.tensor(d_indices_batch, device=self.device, dtype=torch.int64)
+            d_indices_global = torch.tensor(d_indices_global, device=self.device, dtype=torch.int64)
+            t_plus_indices = torch.tensor(t_plus_indices, device=self.device, dtype=torch.int64)
+            t_minus_indices = torch.tensor(t_minus_indices, device=self.device, dtype=torch.int64) 
+            
+            # Calculate deltas
+            deltas = theta[d_indices_batch, t_plus_indices] - theta[d_indices_batch, t_minus_indices]
+            deltas_ref = self.theta_ref[d_indices_global, t_plus_indices] - self.theta_ref[d_indices_global, t_minus_indices]
+            
+            loss_doc_topic_dpo = -F.logsigmoid(deltas - deltas_ref).mean()
+            
+            return loss_doc_topic_dpo
+        
+        elif self.loss_dpo_type == 'plackett_luce':
+            raise NotImplementedError('Loss DPO Plackett Luce type not implemented yet')
+        
+        else:
+            raise NotImplementedError('Loss DPO type not supported')
+    
+    def get_loss_regularization(self, beta):
+        '''beta = self.get_beta()'''
         regularization_term = torch.mean((beta - self.beta_ref) ** 2)
+        return regularization_term
+    
+    def get_loss_doc_topic_regularization(self, theta, batch_indices):
+        theta_ref_batch = self.theta_ref[batch_indices]
+        regularization_term = torch.mean((theta - theta_ref_batch) ** 2)
         return regularization_term
 
     def pairwise_euclidean_distance(self, x, y):
@@ -394,9 +470,8 @@ class ECRTM(nn.Module):
         loss_ECR = self.get_loss_ECR()
         
         if not self.is_finetuning:
-            
             loss = loss_TM + loss_ECR
-
+            
             rst_dict = {
                 'loss': loss,
                 'loss_TM': loss_TM,
@@ -404,11 +479,19 @@ class ECRTM(nn.Module):
             }
         
         else:
-            loss_DPO = self.get_loss_dpo(epoch, batch)
+            loss_DPO = self.get_loss_dpo(beta, epoch, batch)
+            loss_regularization = self.get_loss_regularization(beta)
             
-            loss_regularization = self.get_loss_regularization()
+            batch_indices = input['indices']
             
-            loss = loss_TM + loss_ECR + self.weight_dpo * loss_DPO + self.weight_reg * loss_regularization
+            loss_doc_topic_dpo = self.get_loss_doc_topic_dpo(theta, epoch, batch, batch_indices)
+            loss_doc_topic_reg = self.get_loss_doc_topic_regularization(theta, batch_indices)
+            
+            loss = (loss_TM + loss_ECR + 
+                self.weight_dpo * loss_DPO + 
+                self.weight_reg * loss_regularization +
+                self.weight_dpo * 0.5 * loss_doc_topic_dpo + 
+                self.weight_reg * 0.5 * loss_doc_topic_reg) 
 
             rst_dict = {
                 'loss': loss,
