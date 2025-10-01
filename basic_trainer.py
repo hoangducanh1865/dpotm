@@ -69,7 +69,7 @@ class BasicTrainer:
             
             if self.model.is_finetuning:
                 # Dynamic DPO weight adjustment
-                if epoch == 501:
+                if epoch % 50 == 1:
                     self.model.weight_dpo = 3.0
                     self.reload_theta_and_top_words_files()
                     self.llm.generate_topic_descriptions()
