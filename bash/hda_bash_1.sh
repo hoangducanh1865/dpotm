@@ -29,7 +29,7 @@ python main.py \
   --finetune_epochs 500 \
   --batch_size 200 \
   --lr 0.002 \
-  --device 'cuda' \
+  --device 'cpu' \
   --seed 0 \
   --lr_scheduler 'StepLR' \
   --lr_step_size 150 \

@@ -76,27 +76,6 @@ class BasicTrainer:
                     self.sentence_embedder.embed_topic_descriptions()
                     self.llm.generate_topic_word_preference_dataset()
                     self.llm.generate_doc_topic_preference_dataset()
-                elif epoch == 551:
-                    self.model.weight_dpo = 2.5
-                    self.reload_theta_and_top_words_files()
-                    self.llm.generate_topic_descriptions()
-                    self.sentence_embedder.embed_topic_descriptions()
-                    self.llm.generate_topic_word_preference_dataset()
-                    self.llm.generate_doc_topic_preference_dataset()
-                elif epoch == 601:
-                    self.model.weight_dpo = 2.0
-                    self.reload_theta_and_top_words_files()
-                    self.llm.generate_topic_descriptions()
-                    self.sentence_embedder.embed_topic_descriptions()
-                    self.llm.generate_topic_word_preference_dataset()
-                    self.llm.generate_doc_topic_preference_dataset()
-                elif epoch == 651:
-                    self.model.weight_dpo = 1.5
-                    self.reload_theta_and_top_words_files()
-                    self.llm.generate_topic_descriptions()
-                    self.sentence_embedder.embed_topic_descriptions()
-                    self.llm.generate_topic_word_preference_dataset()
-                    self.llm.generate_doc_topic_preference_dataset()
 
             for batch, batch_data in enumerate(dataset_handler.train_dataloader):
                 batch_size = len(batch_data['data'])
@@ -136,7 +115,7 @@ class BasicTrainer:
                 print(output_log)
                 self.logger.info(output_log)
             
-            if epoch == 400 or epoch == 500 or epoch == 600 or epoch == 700:
+            if epoch >= 400 and epoch % 100 == 0:
                 self.save_checkpoint(epoch)
         
         

@@ -294,7 +294,7 @@ if __name__ == "__main__":
         test_theta = np.asarray(test_theta.cpu())
     else:
         if args.checkpoint_path is not None:
-            trainer.load_checkpoint(args.checkpoint_path)
+            start_epoch = trainer.load_checkpoint(args.checkpoint_path) 
         else:
             trainer.train(dataset, 1, args.epochs)
             
@@ -315,7 +315,10 @@ if __name__ == "__main__":
     trainer.llm = LLM(current_run_dir, args.num_top_words, dataset.vocab, trainer.sentence_embedder)
     
     # Fine-tune model
-    trainer.train(dataset, args.epochs + 1, args.epochs + args.finetune_epochs) 
+    if args.checkpoint_path is not None:
+        trainer.train(dataset, start_epoch + 1, start_epoch + args.finetune_epochs) 
+    else:
+        trainer.train(dataset, args.epochs + 1, args.epochs + args.finetune_epochs) 
     beta = trainer.save_beta(current_run_dir)
     train_theta, test_theta = trainer.save_theta(dataset, current_run_dir)
     
