@@ -1,16 +1,16 @@
 import os
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from utils.configs import Configs as config
+from utils.config import Config as config
 
 
 class SentenceEmbedder:
     def __init__(self, current_run_dir, args):
         self.model = SentenceTransformer(model_name_or_path=config.BERT_MODEL)
+        self.documents_path = os.path.join('datasets', args.dataset, 'train_texts.txt')
         self.topic_descriptions_path = os.path.join(current_run_dir, 'topic_descriptions.txt')
         self.document_embeddings_path = os.path.join(current_run_dir, 'document_embeddings.npy')
         self.topic_description_embeddings_path = os.path.join(current_run_dir, 'topic_description_embeddings.npy')
-        self.documents_path = os.path.join('datasets', args.dataset, 'train_texts.txt')
             
     def embed_topic_descriptions(self):
         with open(self.topic_descriptions_path, 'r') as f:
@@ -31,6 +31,16 @@ class SentenceEmbedder:
         
         print(f"Document embeddings saved to: {self.document_embeddings_path}")
         print(f"Embeddings shape: {document_embeddings.shape}")
+        
+    def load_documents(self):
+        with open(self.documents_path, 'r', encoding='utf-8') as f:
+            docs = [line.strip() for line in f.readlines()]
+            return docs
+        
+    def load_topic_descriptions(self):
+        with open(self.topic_descriptions_path, 'r', encoding='utf-8') as f:
+            desciptions = [line.strip() for line in f.readlines()]
+            return desciptions
     
     def load_document_embeddings(self):
         document_embeddings = np.load(self.document_embeddings_path)
