@@ -22,7 +22,6 @@ class BasicTrainer:
         self.lr_step_size = lr_step_size
         self.log_interval = log_interval
         self.device = device
-        self.args = args
         self.checkpoint_dir = checkpoint_dir
         self.optimizer = self.make_optimizer()
         self.llm = llm
@@ -40,9 +39,6 @@ class BasicTrainer:
         }
 
         optimizer = torch.optim.Adam(**args_dict)
-        
-        '''return torch.optim.Adam(params=self.model.parameters(), lr=self.learning_rate)'''
-        
         return optimizer
 
     def make_lr_scheduler(self):
@@ -74,14 +70,33 @@ class BasicTrainer:
             if self.model.is_finetuning:
                 # Dynamic DPO weight adjustment
                 if epoch % 50 == 1:
-                    if self.model.weight_dpo >= 1.0:
-                        self.model.weight_dpo -= 0.5
+                    self.model.weight_dpo = 3.0
                     self.reload_theta_and_top_words_files()
-                    self.llm.generate_topic_word_preference_dataset()
                     self.llm.generate_topic_descriptions()
-                    if self.args.theta_finetuning_method == 'similarity_search':
-                        self.sentence_embedder.embed_topic_descriptions()
-                    self.llm.generate_doc_topic_preference_dataset(method=self.args.theta_finetuning_method)
+                    self.sentence_embedder.embed_topic_descriptions()
+                    self.llm.generate_topic_word_preference_dataset()
+                    self.llm.generate_doc_topic_preference_dataset()
+                elif epoch == 551:
+                    self.model.weight_dpo = 2.5
+                    self.reload_theta_and_top_words_files()
+                    self.llm.generate_topic_descriptions()
+                    self.sentence_embedder.embed_topic_descriptions()
+                    self.llm.generate_topic_word_preference_dataset()
+                    self.llm.generate_doc_topic_preference_dataset()
+                elif epoch == 601:
+                    self.model.weight_dpo = 2.0
+                    self.reload_theta_and_top_words_files()
+                    self.llm.generate_topic_descriptions()
+                    self.sentence_embedder.embed_topic_descriptions()
+                    self.llm.generate_topic_word_preference_dataset()
+                    self.llm.generate_doc_topic_preference_dataset()
+                elif epoch == 651:
+                    self.model.weight_dpo = 1.5
+                    self.reload_theta_and_top_words_files()
+                    self.llm.generate_topic_descriptions()
+                    self.sentence_embedder.embed_topic_descriptions()
+                    self.llm.generate_topic_word_preference_dataset()
+                    self.llm.generate_doc_topic_preference_dataset()
 
             for batch, batch_data in enumerate(dataset_handler.train_dataloader):
                 batch_size = len(batch_data['data'])
@@ -121,7 +136,7 @@ class BasicTrainer:
                 print(output_log)
                 self.logger.info(output_log)
             
-            if epoch >= 400 and epoch % 100 == 0:
+            if epoch == 400 or epoch == 500 or epoch == 600 or epoch == 700:
                 self.save_checkpoint(epoch)
         
         
@@ -247,8 +262,6 @@ class BasicTrainer:
         
         start_epoch = checkpoint['epoch'] + 1
         self.logger.info(f'Checkpoint loaded: {checkpoint_path}, resuming at epoch {start_epoch}')
-        
-        return start_epoch
     
     def reload_theta_and_top_words_files(self):
         train_theta, test_theta = self.save_theta(self.dataset, self.current_run_dir)

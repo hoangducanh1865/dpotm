@@ -5,7 +5,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from .ECR import ECR
-from utils.config import Config as cfg
+from utils.configs import Configs as cfg
 from utils import static_utils
 from utils.llm import LLM
 
@@ -163,7 +163,13 @@ class ECRTM(nn.Module):
             self.load_preference_beta()
         
         # Create new preference dataset manually for robustness
-        if epoch % 50 == 1 and batch == 0:
+        if epoch == 501 and batch == 0:
+            self.load_preference_dataset()
+        elif epoch == 551 and batch == 0:
+            self.load_preference_dataset()
+        elif epoch == 601 and batch == 0:
+            self.load_preference_dataset()
+        elif epoch == 651 and batch == 0:
             self.load_preference_dataset()
             
         if self.loss_dpo_type == 'bradley_terry':

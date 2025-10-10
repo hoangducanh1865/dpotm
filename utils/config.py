@@ -1,4 +1,3 @@
-import torch
 import argparse
 
 
@@ -46,7 +45,7 @@ def add_wete_argument(parser):
 
 
 def add_training_argument(parser):
-    parser.add_argument('--use_kaggle', type=int, default=1)
+    parser.add_argument('--use_kaggle', action='store_true', default=False)
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--finetune_epochs', type=int, default=100)
     parser.add_argument('--batch_size', type=int, default=200,
@@ -68,8 +67,6 @@ def add_training_argument(parser):
     parser.add_argument('--loss_dpo_calculation_method', type=str, default='multiply') # ['multiply', 'hard_negative', 'hard_positive', 'combined_hard']
     parser.add_argument('--use_jaccard', action='store_true', default=False)
     parser.add_argument('--loss_dpo_type', type=str, default='bradley_terry') # ['bradley_terry', 'plackett_luce']
-    parser.add_argument('--theta_finetuning_method', type=str, default='similarity_search') # ['similarity_search','llm']
-    parser.add_argument('--model_type', type=str, default='openai_api') # ['openai_api', 'hf_model']
 
 
 def add_eval_argument(parser):
@@ -95,76 +92,3 @@ def load_config(path):
             setattr(args, key, value)
     print(args)
     return args
-
-
-class Config:
-    DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    
-    OPENAI_MODEL = 'gpt-4o-mini'
-    HF_MODEL = 'microsoft/DialoGPT-medium' # ['mistralai/Mixtral-8x7B-v0.1', 'microsoft/DialoGPT-medium']
-    BERT_MODEL = 'all-MiniLM-L6-v2'
-    HUGGING_FACE_MODEL = 'microsoft/DialoGPT-medium'
-    
-    TOPIC_WORD_SYSTEM_PROMPT = """You are a text classifier.  
-        Your task is to analyze a list of words with their associated indices in the beta matrix.
-
-        For each topic:
-        1. Identify the main topic that most of the words are related to.  
-        2. Describe that topic briefly in a few English words.  
-        3. Return only one JSON object in the following format:
-
-        {
-          "k": <topic_index>,
-          "topic": "<short English description>",
-          "w_plus_indices": [<beta_indices of words related to the main topic>],
-          "w_minus_indices": [<beta_indices of words not related to the main topic>]
-        }
-
-        Notes:
-        - Use the beta matrix indices provided with each word, not the position in the list.
-        - "w_plus_indices" should contain beta indices of words that are coherent with the main topic.  
-        - "w_minus_indices" should contain beta indices of words that are unrelated or noisy.  
-        - Do not include explanations, only output the JSON object."""
-    
-    TOPIC_DESCRIPTION_SYSTEM_PROMPT = """You are a topic analysis expert.
-        Your task is to analyze a list of top words from a topic and provide a clear, concise description.
-
-        For each topic:
-        1. Analyze the semantic relationship between the words
-        2. Identify the main theme or subject domain  
-        3. Create a concise topic name (2-4 words)
-        4. Write a descriptive sentence explaining what this topic represents
-
-        Return only one JSON object in the following format:
-
-        {
-          "topic_name": "<concise topic name>",
-          "description": "<detailed description sentence>",
-          "key_words": ["<most relevant words from the list>"]
-        }
-
-        Notes:
-        - Keep the topic name short and descriptive (2-4 words)
-        - Make the description informative but concise
-        - Include 3-5 most relevant words in key_words array
-        - Do not include explanations, only output the JSON object."""
-        
-    RELEVANCE_GRANDER_SYSTEM_PROMPT = """You are a relevance assessment expert. 
-        Your task is to evaluate how relevant a topic is to a given document.
-
-        Analyze the document content and topic description, then provide a numerical relevance score.
-
-        Consider:
-        1. Semantic similarity between document content and topic theme
-        2. Thematic overlap and contextual fit
-        3. Direct mention or implicit reference to topic concepts
-        4. Overall coherence between document subject and topic focus
-
-        Respond with ONLY a single number from 0-10 where:
-        - 0-2: Not relevant/completely unrelated
-        - 3-4: Slightly relevant/minimal connection  
-        - 5-6: Moderately relevant/some connection
-        - 7-8: Highly relevant/strong connection
-        - 9-10: Extremely relevant/perfect match
-
-        Output format: Just the numerical score (e.g., "7.5" or "3")"""

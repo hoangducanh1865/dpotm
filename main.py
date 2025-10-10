@@ -17,7 +17,7 @@ from models.ProdLDA import ProdLDA
 from models.WETE import WeTe
 from utils.llm import LLM
 from utils import config, log, miscellaneous, seed
-from utils.config import Config as cfg
+from utils.configs import Configs as cfg
 from utils.sentence_embedder import SentenceEmbedder
 
 
@@ -112,7 +112,7 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
         logger.info(f"Purity: {clustering_results['Purity']}")
 
     # evaluate classification
-    '''if read_labels:
+    if read_labels:
         classification_results = evaluations.evaluate_classification(
             train_theta, test_theta, dataset.train_labels, dataset.test_labels, tune=args.tune_SVM)
         print(f"Accuracy: ", classification_results['acc'])
@@ -120,16 +120,16 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
         logger.info(f"Accuracy: {classification_results['acc']}")
         print(f"Macro-f1", classification_results['macro-F1'])
         wandb.log({"Macro-f1": classification_results['macro-F1']})
-        logger.info(f"Macro-f1: {classification_results['macro-F1']}")'''
+        logger.info(f"Macro-f1: {classification_results['macro-F1']}")
 
     # TC
-    '''TC_15_list, TC_15 = evaluations.topic_coherence.TC_on_wikipedia(
+    TC_15_list, TC_15 = evaluations.topic_coherence.TC_on_wikipedia(
         use_kaggle=args.use_kaggle, 
         top_word_path=os.path.join(current_run_dir, suffix + 'top_words_15.txt'))
     print(f"TC_15: {TC_15:.5f}")
     wandb.log({"TC_15": TC_15})
     logger.info(f"TC_15: {TC_15:.5f}")
-    logger.info(f'TC_15 list: {TC_15_list}')'''
+    logger.info(f'TC_15 list: {TC_15_list}')
 
     # TC_10_list, TC_10 = topmost.evaluations.topic_coherence.TC_on_wikipedia(
     #     os.path.join(current_run_dir, 'top_words_10.txt'))
@@ -294,7 +294,7 @@ if __name__ == "__main__":
         test_theta = np.asarray(test_theta.cpu())
     else:
         if args.checkpoint_path is not None:
-            start_epoch = trainer.load_checkpoint(args.checkpoint_path)
+            trainer.load_checkpoint(args.checkpoint_path)
         else:
             trainer.train(dataset, 1, args.epochs)
             
@@ -311,16 +311,11 @@ if __name__ == "__main__":
     # LLM and Sentence Transformer models
     trainer.model.is_finetuning = True
     trainer.sentence_embedder = SentenceEmbedder(current_run_dir=current_run_dir, args=args)
-    if args.theta_finetuning_method == 'similarity_search':
-        trainer.sentence_embedder.embed_documents()
-    trainer.llm = LLM(current_run_dir, args.num_top_words, dataset.vocab, trainer.sentence_embedder, args.model_type)
+    trainer.sentence_embedder.embed_documents()
+    trainer.llm = LLM(current_run_dir, args.num_top_words, dataset.vocab, trainer.sentence_embedder)
     
     # Fine-tune model
-    if args.checkpoint_path is not None:
-        trainer.train(dataset, start_epoch, start_epoch - 1 + args.finetune_epochs) 
-    else:
-        trainer.train(dataset, args.epochs + 1, args.epochs + args.finetune_epochs) 
-        
+    trainer.train(dataset, args.epochs + 1, args.epochs + args.finetune_epochs) 
     beta = trainer.save_beta(current_run_dir)
     train_theta, test_theta = trainer.save_theta(dataset, current_run_dir)
     
