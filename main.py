@@ -17,8 +17,8 @@ from models.ProdLDA import ProdLDA
 from models.WETE import WeTe
 from utils.llm import LLM
 from utils import config, log, miscellaneous, seed
-from utils.configs import Configs as cfg
-from utils.sentence_embedder import SentenceEmbedder
+from utils.config import Config as cfg
+'''from utils.sentence_embedder import SentenceEmbedder'''
 
 
 RESULT_DIR = 'results'
@@ -124,7 +124,8 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
 
     # TC
     TC_15_list, TC_15 = evaluations.topic_coherence.TC_on_wikipedia(
-        use_kaggle=args.use_kaggle, 
+        use_kaggle=args.use_kaggle,
+        use_colab=args.use_colab,
         top_word_path=os.path.join(current_run_dir, suffix + 'top_words_15.txt'))
     print(f"TC_15: {TC_15:.5f}")
     wandb.log({"TC_15": TC_15})
@@ -148,6 +149,7 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
 
     NPMI_wiki_10_list, NPMI_wiki_10 = evaluations.topic_coherence.TC_on_wikipedia(
         use_kaggle=args.use_kaggle, 
+        use_colab=args.use_colab,
         top_word_path=os.path.join(current_run_dir, f'{suffix}top_words_10.txt'), 
         cv_type='NPMI')
     print(f"NPMI_wiki_10: {NPMI_wiki_10:.5f}, NPMI_wiki_10_list: {NPMI_wiki_10_list}")
@@ -157,6 +159,7 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
 
     Cp_wiki_10_list, Cp_wiki_10 = evaluations.topic_coherence.TC_on_wikipedia(
         use_kaggle=args.use_kaggle, 
+        use_colab=args.use_colab,
         top_word_path=os.path.join(current_run_dir, f'{suffix}top_words_10.txt'), 
         cv_type='C_P')
     print(f"Cp_wiki_10: {Cp_wiki_10:.5f}, Cp_wiki_10_list: {Cp_wiki_10_list}")
@@ -293,7 +296,7 @@ if __name__ == "__main__":
         train_theta = np.asarray(train_theta.cpu())
         test_theta = np.asarray(test_theta.cpu())
     else:
-        if args.checkpoint_path is not None:
+        if args.checkpoint_path:
             start_epoch = trainer.load_checkpoint(args.checkpoint_path) 
         else:
             trainer.train(dataset, 1, args.epochs)
@@ -310,13 +313,13 @@ if __name__ == "__main__":
         
     # LLM and Sentence Transformer models
     trainer.model.is_finetuning = True
-    trainer.sentence_embedder = SentenceEmbedder(current_run_dir=current_run_dir, args=args)
-    trainer.sentence_embedder.embed_documents()
-    trainer.llm = LLM(current_run_dir, args.num_top_words, dataset.vocab, trainer.sentence_embedder)
+    '''trainer.sentence_embedder = SentenceEmbedder(current_run_dir=current_run_dir, args=args)
+    trainer.sentence_embedder.embed_documents()'''
+    trainer.llm = LLM(current_run_dir, args.num_top_words, dataset.vocab, args)
     
     # Fine-tune model
-    if args.checkpoint_path is not None:
-        trainer.train(dataset, start_epoch + 1, start_epoch + args.finetune_epochs) 
+    if args.checkpoint_path:
+        trainer.train(dataset, start_epoch, start_epoch - 1 + args.finetune_epochs) 
     else:
         trainer.train(dataset, args.epochs + 1, args.epochs + args.finetune_epochs) 
     beta = trainer.save_beta(current_run_dir)

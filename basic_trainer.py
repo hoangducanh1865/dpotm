@@ -29,7 +29,7 @@ class BasicTrainer:
             self.lr_scheduler = self.make_lr_scheduler()
         self.dataset = dataset
         self.current_run_dir = current_run_dir
-        self.sentence_embedder = sentence_embedder
+        '''self.sentence_embedder = sentence_embedder'''
         self.logger = logging.getLogger('main')
 
     def make_optimizer(self):
@@ -70,10 +70,10 @@ class BasicTrainer:
             if self.model.is_finetuning:
                 # Dynamic DPO weight adjustment
                 if epoch % 50 == 1:
-                    self.model.weight_dpo = 3.0
+                    self.model.weight_dpo -= (1.0 if self.model.weight_dpo >= 1.0 else 0.0)
                     self.reload_theta_and_top_words_files()
                     self.llm.generate_topic_descriptions()
-                    self.sentence_embedder.embed_topic_descriptions()
+                    '''self.sentence_embedder.embed_topic_descriptions()'''
                     self.llm.generate_topic_word_preference_dataset()
                     self.llm.generate_doc_topic_preference_dataset()
 
@@ -241,6 +241,8 @@ class BasicTrainer:
         
         start_epoch = checkpoint['epoch'] + 1
         self.logger.info(f'Checkpoint loaded: {checkpoint_path}, resuming at epoch {start_epoch}')
+        
+        return start_epoch
     
     def reload_theta_and_top_words_files(self):
         train_theta, test_theta = self.save_theta(self.dataset, self.current_run_dir)

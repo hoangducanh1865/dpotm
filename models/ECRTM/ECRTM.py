@@ -5,7 +5,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from .ECR import ECR
-from utils.configs import Configs as cfg
+from utils.config import Config as cfg
 from utils import static_utils
 from utils.llm import LLM
 
@@ -31,7 +31,7 @@ class ECRTM(nn.Module):
         self.beta_ref_path = None
         self.beta_ref = None
         self.preference_dataset_path = None
-        self.preference_dataset = None
+        self.topic_word_preference_dataset = None
         
         self.theta_ref_path = None
         self.theta_ref = None
@@ -44,7 +44,8 @@ class ECRTM(nn.Module):
         # Methods to calculate DPO loss
         self.loss_dpo_calculation_method = args.loss_dpo_calculation_method
         self.use_jaccard = args.use_jaccard
-        self.loss_dpo_type = args.loss_dpo_type
+        self.loss_dpo_topic_word_type = args.loss_dpo_topic_word_type
+        self.loss_dpo_doc_topic_type = args.loss_dpo_doc_topic_type
         self.count_drift_topics = 0
         
         # for Jaccard Overlap method
@@ -81,6 +82,9 @@ class ECRTM(nn.Module):
         nn.init.trunc_normal_(self.topic_embeddings, std=0.1)
         self.topic_embeddings = nn.Parameter(F.normalize(self.topic_embeddings))
 
+        self.weight_loss_ECR = weight_loss_ECR
+        self.sinkhorn_alpha = sinkhorn_alpha
+        self.sinkhorn_max_iter = sinkhorn_max_iter
         self.ECR = ECR(weight_loss_ECR, sinkhorn_alpha, sinkhorn_max_iter)
 
     def get_beta(self):
@@ -132,19 +136,23 @@ class ECRTM(nn.Module):
         loss_ECR = self.ECR(cost)
         return loss_ECR
     
-    def load_preference_dataset(self):
-        self.preference_dataset_path = os.path.join(self.current_run_dir, 'preference_dataset.jsonl')
-        self.preference_dataset = []
+    def load_topic_word_preference_dataset(self):
+        self.preference_dataset_path = os.path.join(self.current_run_dir, 'topic_word_preference_dataset.jsonl')
+        self.topic_word_preference_dataset = []
         with open(self.preference_dataset_path, 'r') as f:
             for line in f:
-                self.preference_dataset.append(line)
+                self.topic_word_preference_dataset.append(line)
+
+        print('Loaded topic-word preference dataset')
     
     def load_doc_topic_preference_dataset(self):
-        self.doc_topic_preference_dataset_path = os.path.join(self.current_run_dir, 'doc_topic_preference_dataset.jsonl')
+        self.doc_topic_preference_dataset_path = os.path.join('data', 'preference_dataset', 'doc_topic_preference_dataset.jsonl')
         self.doc_topic_preference_dataset = []
         with open(self.doc_topic_preference_dataset_path, 'r') as f:
             for line in f:
                 self.doc_topic_preference_dataset.append(line)
+        
+        print('Loaded doc-topic preference dataset')
 
     def load_preference_beta(self):   
         # Load reference beta and froze it
@@ -158,21 +166,17 @@ class ECRTM(nn.Module):
         self.theta_ref = torch.from_numpy(np.load(self.theta_ref_path)).float().to(self.device)
         self.theta_ref.requires_grad = False
     
-    def get_loss_dpo(self, beta, epoch, batch):
+    def get_loss_topic_word_dpo(self, beta, epoch, batch):
         if self.beta_ref is None:
             self.load_preference_beta()
         
         # Create new preference dataset manually for robustness
-        if epoch == 501 and batch == 0:
-            self.load_preference_dataset()
-        elif epoch == 551 and batch == 0:
-            self.load_preference_dataset()
-        elif epoch == 601 and batch == 0:
-            self.load_preference_dataset()
-        elif epoch == 651 and batch == 0:
-            self.load_preference_dataset()
+        if epoch % 100 == 1 and batch == 0:
+            self.load_topic_word_preference_dataset()
+            '''self.weight_loss_ECR -= 150
+            self.ECR = ECR(self.weight_loss_ECR, self.sinkhorn_alpha, self.sinkhorn_max_iter)'''
             
-        if self.loss_dpo_type == 'bradley_terry':
+        if self.loss_dpo_topic_word_type == 'bradley_terry':
             
             if self.use_jaccard == True:
                 '''
@@ -215,7 +219,7 @@ class ECRTM(nn.Module):
                             self.count_drift_topics = 0
                             llm = LLM(dir_path=self.current_run_dir, num_top_words=self.num_top_words)
                             llm.generate_topic_word_preference_dataset()
-                            self.load_preference_dataset()
+                            self.load_topic_word_preference_dataset()
                     
                 else:
                     self.beta_prev = beta_curr
@@ -225,7 +229,7 @@ class ECRTM(nn.Module):
             
             if self.loss_dpo_calculation_method == 'multiply':
                 
-                for line in self.preference_dataset:
+                for line in self.topic_word_preference_dataset:
                     data = json.loads(line)
                     k = data['k']
                     
@@ -240,7 +244,7 @@ class ECRTM(nn.Module):
                 We should use this block since in topic model, there are some cases where some stop words can pass the 
                 data preprocessing phase, and they get very high beta score -> hard negative words.
                 '''
-                for line in self.preference_dataset:
+                for line in self.topic_word_preference_dataset:
                     data = json.loads(line)
                     k = data['k']
                     
@@ -266,7 +270,7 @@ class ECRTM(nn.Module):
                             w_minus_indices.append(hardest_w_minus_idx)
             
             elif self.loss_dpo_calculation_method == 'hard_positive':
-                for line in self.preference_dataset:
+                for line in self.topic_word_preference_dataset:
                     data = json.loads(line)
                     k = data['k']
                     
@@ -292,7 +296,7 @@ class ECRTM(nn.Module):
                             w_minus_indices.append(w_minus_idx)
             
             elif self.loss_dpo_calculation_method == 'combined_hard':
-                for line in self.preference_dataset:
+                for line in self.topic_word_preference_dataset:
                     data = json.loads(line)
                     k = data['k']
                     
@@ -355,10 +359,10 @@ class ECRTM(nn.Module):
             
             return loss_dpo
 
-        elif self.loss_dpo_type == 'plackett_luce':
+        elif self.loss_dpo_topic_word_type == 'plackett_luce':
             loss_dpo = []
             
-            for line in self.preference_dataset:
+            for line in self.topic_word_preference_dataset:
                 data = json.loads(line)
                 k = data['k']
                 w_indices = data['w_indices']
@@ -388,16 +392,10 @@ class ECRTM(nn.Module):
             self.load_preference_theta()
         
         # Create new preference dataset manually for robustness
-        if epoch == 501 and batch == 0:
+        if epoch % 100 == 1 and batch == 0:
             self.load_doc_topic_preference_dataset()
-        elif epoch == 551 and batch == 0:
-            self.load_doc_topic_preference_dataset()
-        elif epoch == 601 and batch == 0:
-            self.load_doc_topic_preference_dataset()
-        elif epoch == 651 and batch == 0:
-            self.load_doc_topic_preference_dataset()
-            
-        if self.loss_dpo_type == 'bradley_terry':
+        
+        if self.loss_dpo_doc_topic_type == 'bradley_terry':
             d_indices_batch, t_plus_indices, t_minus_indices = [], [], []
             d_indices_global = [] # For accessing theta_ref
             
@@ -437,8 +435,50 @@ class ECRTM(nn.Module):
             
             return loss_doc_topic_dpo
         
-        elif self.loss_dpo_type == 'plackett_luce':
-            raise NotImplementedError('Loss DPO Plackett Luce type not implemented yet')
+        elif self.loss_dpo_doc_topic_type == 'plackett_luce':
+            loss_dpo = []
+            
+            batch_indices_set = set(batch_indices.cpu().numpy())
+            global_to_batch_idx = {global_idx.item(): batch_idx for batch_idx, global_idx in enumerate(batch_indices)}
+            
+            for line in self.doc_topic_preference_dataset:
+                data = json.loads(line)
+                # Update field names to match your new format
+                doc_global_idx = data['doc_index']  # Changed from 'd' to 'doc_index'
+                
+                # Only process documents which are in current batch
+                if doc_global_idx in batch_indices_set:
+                    doc_batch_idx = global_to_batch_idx[doc_global_idx]
+                    t_indices = data['ranking']  # Changed from 't_indices' to 'ranking'
+                    
+                    # Calculate Plackett-Luce probability for this ranking
+                    log_prob = torch.tensor(0.0, device=self.device)
+                    
+                    for i in range(len(t_indices)):
+                        # At position i, we need P(t_indices[i] | remaining topics)
+                        numerator = theta[doc_batch_idx, t_indices[i]] - self.theta_ref[doc_global_idx, t_indices[i]]
+                        
+                        # Denominator: sum over all remaining topics (positions i to end)
+                        denominator_terms = []
+                        for j in range(i, len(t_indices)):
+                            score_diff = theta[doc_batch_idx, t_indices[j]] - self.theta_ref[doc_global_idx, t_indices[j]]
+                            denominator_terms.append(score_diff)
+                        
+                        # Use logsumexp for numerical stability
+                        log_denominator = torch.logsumexp(torch.stack(denominator_terms), dim=0)
+                        
+                        # Add log probability for this position
+                        log_prob += numerator - log_denominator
+                    
+                    # Negate for loss (we want to maximize log probability)
+                    loss_dpo.append(-log_prob)
+            
+            if len(loss_dpo) > 0:
+                loss_doc_topic_dpo = torch.stack(loss_dpo).mean()
+            else:
+                loss_doc_topic_dpo = torch.tensor(0.0, device=self.device)
+            
+            return loss_doc_topic_dpo
         
         else:
             raise NotImplementedError('Loss DPO type not supported')
@@ -479,7 +519,7 @@ class ECRTM(nn.Module):
             }
         
         else:
-            loss_DPO = self.get_loss_dpo(beta, epoch, batch)
+            loss_DPO = self.get_loss_topic_word_dpo(beta, epoch, batch)
             loss_regularization = self.get_loss_regularization(beta)
             
             batch_indices = input['indices']
@@ -492,6 +532,8 @@ class ECRTM(nn.Module):
                 self.weight_reg * loss_regularization +
                 self.weight_dpo * 0.5 * loss_doc_topic_dpo + 
                 self.weight_reg * 0.5 * loss_doc_topic_reg) 
+            
+            print(f'Epoch: {epoch} - Batch: {batch} - Loss TM: {loss_TM} - Loss ECR: {loss_ECR} - Loss DPO: {loss_DPO} - Loss Reg: {loss_regularization} - Loss doc-topic DPO: {loss_doc_topic_dpo} - Loss doc-topic Reg: {loss_doc_topic_reg}')
 
             rst_dict = {
                 'loss': loss,
