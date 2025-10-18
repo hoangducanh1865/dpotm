@@ -1,3 +1,4 @@
+import logging
 import re
 import torch
 import os
@@ -33,6 +34,8 @@ class LLM:
         self.topic_word_dataset_generate_method = args.topic_word_dataset_generate_method
         self.doc_topic_dataset_generate_method = args.doc_topic_dataset_generate_method
         self.num_docs_per_call = args.num_docs_per_call
+        self.logger = logging.getLogger('main')
+        self.log_llm_predictions_first_time = True
 
     def generate_topic_word_preference_dataset(self):
         if self.topic_word_dataset_generate_method == 'openai':
@@ -74,6 +77,18 @@ class LLM:
             raise NotImplementedError('Generate topic word preference dataset method not supported')
         
         print(f'Created and saved topic-word preference dataset to: {self.topic_word_preference_dataset_path}')
+        
+    def print_llm_predictions(self):
+        self.logger.info('LLM predictions on train set')
+        predictions = []
+        with open(self.doc_topic_preference_dataset_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.strip():  # Skip empty lines
+                    data = json.loads(line)
+                    predictions.append(str(data['ranking'][0]))
+        
+        pred_str = ' '.join(predictions)
+        self.logger.info(pred_str)
 
     def generate_doc_topic_preference_dataset(self):
         theta = np.load(self.theta_path)
@@ -85,6 +100,9 @@ class LLM:
             
             if len(processed_lines) >= theta.shape[0]:
                 print(f'Doc-topic preference dataset already complete')
+                if self.log_llm_predictions_first_time:
+                    self.print_llm_predictions()
+                    self.log_llm_predictions_first_time = False
                 return
             else:
                 print(f'Doc-topic preference dataset has not complete yet ({len(processed_lines)}/{theta.shape[0]}), continue to process')
@@ -249,6 +267,9 @@ class LLM:
 
         print(f'Created and saved doc-topic preference dataset to: {self.doc_topic_preference_dataset_path}')
         print(f'Successful document processing rate: {((len(documents) - failed_doc_count) / len(documents)) * 100:.2f}%')
+        if self.log_llm_predictions_first_time:
+            self.print_llm_predictions()
+            self.log_llm_predictions_first_time = False
             
     def generate_topic_descriptions(self):
         """Read self.top_words_txt_path and generate description for each topic

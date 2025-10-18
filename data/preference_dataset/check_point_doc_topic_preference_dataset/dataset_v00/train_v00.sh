@@ -34,9 +34,9 @@
   --seed 0 \
   --lr_scheduler 'StepLR' \
   --lr_step_size 150 \
-  --finetune \
+  --finetune_beta 1 \
   --checkpoint_path 'data/output_models/mode_v00/checkpoint_epoch_400.pth' \
-  --loss_dpo_calculation_method 'hard_positive' \
+  --loss_topic_word_dpo_calculation_method 'hard_positive' \
   --loss_dpo_topic_word_type 'bradley_terry' \
   --generate_topic_descriptions_method 'openai' \
   --topic_word_dataset_generate_method 'openai' \
