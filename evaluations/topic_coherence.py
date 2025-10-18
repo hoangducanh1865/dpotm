@@ -24,7 +24,7 @@ def compute_topic_coherence(reference_corpus, vocab, top_words, cv_type='c_v'):
     return cv_per_topic, score
 
 
-def TC_on_wikipedia(use_kaggle, top_word_path, cv_type='C_V'):
+def TC_on_wikipedia(use_kaggle, use_colab, top_word_path, cv_type='C_V'):
     """
     Compute the TC score on the Wikipedia dataset
     """
@@ -33,6 +33,10 @@ def TC_on_wikipedia(use_kaggle, top_word_path, cv_type='C_V'):
     
     if use_kaggle:
         wiki_dir = '/kaggle/input/wikipedia/wikipedia_bd/'
+        os.system(
+        f"java -jar {os.path.join(jar_dir, 'pametto.jar')} {wiki_dir} {cv_type} {top_word_path} > tmp{random_number}.txt")
+    elif use_colab:
+        wiki_dir = '../wikipedia/wikipedia_bd/'
         os.system(
         f"java -jar {os.path.join(jar_dir, 'pametto.jar')} {wiki_dir} {cv_type} {top_word_path} > tmp{random_number}.txt")
     else:

@@ -1,7 +1,7 @@
-import os
+'''import os
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from utils.configs import Configs as config
+from utils.config import Config as config
 
 
 class SentenceEmbedder:
@@ -38,4 +38,4 @@ class SentenceEmbedder:
     
     def load_topic_description_embeddings(self):
         topic_description_embeddedings = np.load(self.topic_description_embeddings_path)
-        return topic_description_embeddedings
+        return topic_description_embeddedings'''

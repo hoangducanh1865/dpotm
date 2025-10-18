@@ -1,0 +1,44 @@
+python main.py \
+  --dataset '20NG' \
+  --plm_model 'all-mpnet-base-v2' \
+  --wandb_prj 'topmost' \
+  --model 'ECRTM' \
+  --num_topics 50 \
+  --num_top_words 15 \
+  --num_groups 20 \
+  --dropout 0.2 \
+  --hidden_dim_1 384 \
+  --hidden_dim_2 384 \
+  --theta_temp 1.0 \
+  --DT_alpha 3.0 \
+  --TW_alpha 2.0 \
+  --weight_GR 1.0 \
+  --alpha_GR 5.0 \
+  --weight_InfoNCE 50.0 \
+  --beta_temp 0.20 \
+  --weight_ECR 250.0 \
+  --use_pretrainWE \
+  --weight_dpo 50.0 \
+  --weight_reg 5.0 \
+  --glove 'glove.6B.100d.txt' \
+  --wete_beta 0.5 \
+  --wete_epsilon 0.1 \
+  --init_alpha \
+  --use_kaggle 0 \
+  --use_colab 1 \
+  --epochs 400 \
+  --finetune_epochs 100 \
+  --batch_size 200 \
+  --lr 0.002 \
+  --device 'cuda' \
+  --seed 0 \
+  --lr_scheduler 'StepLR' \
+  --lr_step_size 150 \
+  --finetune_beta 1 \
+  --loss_topic_word_dpo_calculation_method 'hard_positive' \
+  --loss_dpo_topic_word_type 'bradley_terry' \
+  --generate_topic_descriptions_method 'openai' \
+  --topic_word_dataset_generate_method 'openai' \
+  --doc_topic_dataset_generate_method 'openai' \
+  --num_docs_per_call 10 \
+  --tune_SVM
