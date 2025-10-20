@@ -44,8 +44,10 @@ def add_model_argument(parser):
         default=False,
         help="Enable use_pretrainWE mode",
     )
-    parser.add_argument("--weight_dpo", type=float, default=0.5)
-    parser.add_argument("--weight_reg", type=float, default=0.5)
+    parser.add_argument("--weight_topic_word_dpo", type=float, default=0.5)
+    parser.add_argument("--weight_topic_word_reg", type=float, default=0.5)
+    parser.add_argument("--weight_doc_topic_dpo", type=float, default=0.5)
+    parser.add_argument("--weight_doc_topic_reg", type=float, default=0.5)
 
 
 def add_wete_argument(parser):
@@ -118,6 +120,8 @@ def add_training_argument(parser):
         "--doc_topic_dataset_generate_method", type=str, default="hf"
     )  # ['openai', 'hf']
     parser.add_argument("--num_docs_per_call", type=int, default=1)
+    parser.add_argument('--run_hpo',type=int,default=0)
+    parser.add_argument('--hpo_algorithm',type=str,default='random_search')
 
 
 def add_eval_argument(parser):

@@ -88,10 +88,8 @@ class BasicTrainer:
 
             if self.model.is_finetuning:
                 # Dynamic DPO weight adjustment, update preference beta and theta
-                if epoch % 50 == 1:
-                    self.model.weight_dpo -= (
-                        1.0 if self.model.weight_dpo >= 1.0 else 0.0
-                    )
+                if epoch % 100 == 1:
+                    '''self.model.weight_topic_word_dpo -= (1.0 if self.model.weight_topic_word_dpo >= 1.0 else 0.0)'''
                     self.reload_theta_and_top_words_files()
                     if self.finetune_beta:
                         self.llm.generate_topic_word_preference_dataset()
@@ -147,7 +145,7 @@ class BasicTrainer:
                 self.logger.info(f"Evaluation at epoch {epoch}")
                 evaluate_fn(epoch)
 
-            if epoch >= 400 and epoch % 100 == 0:
+            if epoch >= self.epochs and epoch % 100 == 0:
                 self.save_checkpoint(epoch)
 
     def test(self, input_data):

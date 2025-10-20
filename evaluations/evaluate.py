@@ -100,14 +100,14 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
         logger.info(f"Macro-f1: {classification_results['macro-F1']}")'''
 
     # TC
-    '''TC_15_list, TC_15 = evaluations.topic_coherence.TC_on_wikipedia(
+    TC_15_list, TC_15 = evaluations.topic_coherence.TC_on_wikipedia(
         use_kaggle=args.use_kaggle,
         use_colab=args.use_colab,
         top_word_path=os.path.join(current_run_dir, suffix + 'top_words_15.txt'))
     print(f"TC_15: {TC_15:.5f}")
     wandb.log({"TC_15": TC_15})
     logger.info(f"TC_15: {TC_15:.5f}")
-    logger.info(f'TC_15 list: {TC_15_list}')'''
+    logger.info(f'TC_15 list: {TC_15_list}')
 
     # TC_10_list, TC_10 = topmost.evaluations.topic_coherence.TC_on_wikipedia(
     #     os.path.join(current_run_dir, 'top_words_10.txt'))
