@@ -18,8 +18,8 @@ python main.py \
   --beta_temp 0.20 \
   --weight_ECR 250.0 \
   --use_pretrainWE \
-  --weight_dpo 50.0 \
-  --weight_reg 5.0 \
+  --weight_topic_word_dpo 50.0 \
+  --weight_topic_word_reg 5.0 \
   --glove 'glove.6B.100d.txt' \
   --wete_beta 0.5 \
   --wete_epsilon 0.1 \
@@ -42,4 +42,6 @@ python main.py \
   --topic_word_dataset_generate_method 'openai' \
   --doc_topic_dataset_generate_method 'hf' \
   --num_docs_per_call 1 \
+  --run_hppo 0 \
+  --hpo_algorithm 'asha' \
   --tune_SVM

@@ -57,8 +57,10 @@ class ECRTM(nn.Module):
         self.doc_topic_preference_dataset_path = None
         self.doc_topic_preference_dataset = None
 
-        self.weight_dpo = args.weight_dpo
-        self.weight_reg = args.weight_reg
+        self.weight_topic_word_dpo = args.weight_topic_word_dpo
+        self.weight_topic_word_reg = args.weight_topic_word_reg
+        self.weight_doc_topic_dpo = args.weight_doc_topic_dpo
+        self.weight_doc_topic_reg = args.weight_doc_topic_reg
 
         # Methods to calculate DPO loss
         self.loss_topic_word_dpo_calculation_method = (
@@ -421,12 +423,12 @@ class ECRTM(nn.Module):
                 - self.beta_ref[k_indices, w_minus_indices]
             )
 
-            loss_dpo = -F.logsigmoid(deltas - deltas_ref).mean()
+            loss_topic_word_dpo = -F.logsigmoid(deltas - deltas_ref).mean()
 
-            return loss_dpo
+            return loss_topic_word_dpo
 
         elif self.loss_dpo_topic_word_type == "plackett_luce":
-            loss_dpo = []
+            loss_topic_word_dpo = []
 
             for line in self.topic_word_preference_dataset:
                 data = json.loads(line)
@@ -446,12 +448,12 @@ class ECRTM(nn.Module):
 
                     loss_dpo_per_topic *= 1.0 / denominator
 
-                loss_dpo.append(loss_dpo_per_topic)
+                loss_topic_word_dpo.append(loss_dpo_per_topic)
 
-            loss_dpo = torch.stack(loss_dpo)
-            loss_dpo = -torch.log(loss_dpo).mean()
+            loss_topic_word_dpo = torch.stack(loss_topic_word_dpo)
+            loss_topic_word_dpo = -torch.log(loss_topic_word_dpo).mean()
 
-            return loss_dpo
+            return loss_topic_word_dpo
 
         else:
             raise NotImplementedError("Loss DPO type not supported")
@@ -603,7 +605,7 @@ class ECRTM(nn.Module):
             loss_doc_topic_dpo = -F.logsigmoid(deltas - deltas_ref).mean()
             return loss_doc_topic_dpo
         elif self.loss_dpo_doc_topic_type == "plackett_luce":
-            loss_dpo = []
+            loss_topic_word_dpo = []
 
             batch_indices_set = set(batch_indices.cpu().numpy())
             global_to_batch_idx = {
@@ -649,10 +651,10 @@ class ECRTM(nn.Module):
                         log_prob += numerator - log_denominator
 
                     # Negate for loss (we want to maximize log probability)
-                    loss_dpo.append(-log_prob)
+                    loss_topic_word_dpo.append(-log_prob)
 
-            if len(loss_dpo) > 0:
-                loss_doc_topic_dpo = torch.stack(loss_dpo).mean()
+            if len(loss_topic_word_dpo) > 0:
+                loss_doc_topic_dpo = torch.stack(loss_topic_word_dpo).mean()
             else:
                 loss_doc_topic_dpo = torch.tensor(0.0, device=self.device)
 
@@ -699,10 +701,10 @@ class ECRTM(nn.Module):
         else:
             loss = loss_TM + loss_ECR
             if self.finetune_beta:
-                loss_DPO = self.get_loss_topic_word_dpo(beta, epoch, batch)
-                loss_regularization = self.get_loss_regularization(beta)
+                loss_topic_word_dpo = self.get_loss_topic_word_dpo(beta, epoch, batch)
+                loss_topic_word_reg = self.get_loss_regularization(beta)
                 loss += (
-                    self.weight_dpo * loss_DPO + self.weight_reg * loss_regularization
+                    self.weight_topic_word_dpo * loss_topic_word_dpo + self.weight_topic_word_reg * loss_topic_word_reg
                 )
 
             batch_indices = input["indices"]
@@ -715,23 +717,41 @@ class ECRTM(nn.Module):
                     theta, batch_indices
                 )
                 loss += (
-                    self.weight_dpo * 0.5 * loss_doc_topic_dpo
-                    + self.weight_reg * 0.5 * loss_doc_topic_reg
+                    self.weight_doc_topic_dpo * loss_doc_topic_dpo + self.weight_doc_topic_reg * loss_doc_topic_reg
                 )
 
             """if self.finetune_beta and self.finetune_theta:
-                print(f'Epoch: {epoch} - Batch: {batch} - Loss TM: {loss_TM} - Loss ECR: {loss_ECR} - Loss topic-word DPO: {loss_DPO} - Loss topic-word Reg: {loss_regularization} - Loss doc-topic DPO: {loss_doc_topic_dpo} - Loss doc-topic Reg: {loss_doc_topic_reg}')
+                print(f'Epoch: {epoch} - Batch: {batch} - Loss TM: {loss_TM} - Loss ECR: {loss_ECR} - Loss topic-word DPO: {loss_topic_word_dpo} - Loss topic-word Reg: {loss_topic_word_reg} - Loss doc-topic DPO: {loss_doc_topic_dpo} - Loss doc-topic Reg: {loss_doc_topic_reg}')
             elif self.finetune_beta:
-                print(f'Epoch: {epoch} - Batch: {batch} - Loss TM: {loss_TM} - Loss ECR: {loss_ECR} - Loss topic-word DPO: {loss_DPO} - Loss topic-word Reg: {loss_regularization}')
+                print(f'Epoch: {epoch} - Batch: {batch} - Loss TM: {loss_TM} - Loss ECR: {loss_ECR} - Loss topic-word DPO: {loss_topic_word_dpo} - Loss topic-word Reg: {loss_topic_word_reg}')
             elif self.finetune_theta:
                 print(f'Epoch: {epoch} - Batch: {batch} - Loss TM: {loss_TM} - Loss ECR: {loss_ECR} - Loss doc-topic DPO: {loss_doc_topic_dpo} - Loss doc-topic Reg: {loss_doc_topic_reg}')"""
 
-            rst_dict = {
-                "loss": loss,
-                "loss_TM": loss_TM,
-                "loss_ECR": loss_ECR,
-                "loss_DPO": loss_DPO,
-                "loss_regularization": loss_regularization,
-            }
+            if self.finetune_beta and self.finetune_theta:
+                rst_dict = {
+                    "loss": loss,
+                    "loss_TM": loss_TM,
+                    "loss_ECR": loss_ECR,
+                    "loss_topic_word_dpo": loss_topic_word_dpo,
+                    "loss_topic_word_reg": loss_topic_word_reg,
+                    "loss_doc_topic_dpo": loss_doc_topic_dpo,
+                    "loss_doc_topic_reg": loss_doc_topic_reg
+                }
+            elif self.finetune_beta:
+                rst_dict = {
+                    "loss": loss,
+                    "loss_TM": loss_TM,
+                    "loss_ECR": loss_ECR,
+                    "loss_topic_word_dpo": loss_topic_word_dpo,
+                    "loss_topic_word_reg": loss_topic_word_reg
+                }
+            elif self.finetune_theta:
+                rst_dict = {
+                    "loss": loss,
+                    "loss_TM": loss_TM,
+                    "loss_ECR": loss_ECR,
+                    "loss_doc_topic_dpo": loss_doc_topic_dpo,
+                    "loss_doc_topic_reg": loss_doc_topic_reg
+                }
 
         return rst_dict

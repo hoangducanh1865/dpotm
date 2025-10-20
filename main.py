@@ -17,6 +17,8 @@ from utils.llm import LLM
 from utils import config, log, miscellaneous, seed
 from utils.config import Config as cfg
 from evaluations.evaluate import evaluate
+from utils.hpo import HPO
+from scipy import stats
 
 RESULT_DIR = 'results'
 DATA_DIR = 'datasets'
@@ -163,6 +165,52 @@ if __name__ == "__main__":
     if args.finetune_beta == 0 and args.finetune_theta == 0:
         wandb.finish()
         sys.exit(0)
+        
+    # Train as usual and then find best configuration
+    if args.run_hpo:
+        if args.hpo_algorithm=='asha':
+            config_space={
+                'weight_doc_topic_dpo':stats.uniform(0.0,50.0),
+                'weight_doc_topic_reg':stats.uniform(0.0,50.0),
+                # 'finetune_epochs':stats.randint(50,300) # finetune_epochs is already controlled by ASHA scheduler
+            }
+            initial_config={
+                'weight_doc_topic_dpo':args.weight_doc_topic_dpo,
+                'weight_doc_topic_reg':args.weight_doc_topic_reg,
+                'finetune_epochs':args.finetune_epochs
+            }
+            best_config,best_score,tuner=HPO.asha_search(
+                args, dataset, current_run_dir, pretrainWE, 
+                config_space, initial_config,
+                num_trials=50, eta=2, r_min=50, r_max=200, prefact=1
+            )
+        elif args.hpo_algorithm=='bayesian':
+            config_space={
+                'weight_doc_topic_dpo':stats.uniform(0.0,50.0),
+                'weight_doc_topic_reg':stats.uniform(0.0,50.0),
+                'finetune_epochs':stats.uniform(50,300) 
+            }
+            initial_config={
+                'weight_doc_topic_dpo':args.weight_doc_topic_dpo,
+                'weight_doc_topic_reg':args.weight_doc_topic_reg,
+                'finetune_epochs':float(args.finetune_epochs)
+            }
+            best_config,best_score,tuner=HPO.bayesian_search(
+                args, dataset, current_run_dir, pretrainWE,
+                config_space=config_space,
+                initial_config=initial_config,
+                num_trials=20,
+                n_random_init=5
+            )
+            best_config['finetune_epochs']=int(round(best_config['finetune_epochs']))
+        else:
+            raise NotImplementedError('HPO algorithm not supported')
+        args.weight_doc_topic_dpo=best_config['weight_doc_topic_dpo']
+        args.weight_doc_topic_reg=best_config['weight_doc_topic_reg']
+        args.finetune_epochs=best_config['finetune_epochs']
+        print(f'Best weight_doc_topic_dpo: {best_config['weight_doc_topic_dpo']}')
+        print(f'Best weight_doc_topic_reg: {best_config['weight_doc_topic_reg']}')
+        print(f'Best finetune_epochs: {best_config['finetune_epochs']}')
         
     # LLM and Sentence Transformer models
     trainer.model.is_finetuning = True

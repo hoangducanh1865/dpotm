@@ -18,8 +18,8 @@ python main.py \
   --beta_temp 0.20 \
   --weight_ECR 300.0 \
   --use_pretrainWE \
-  --weight_dpo 50.0 \
-  --weight_reg 5.0 \
+  --weight_topic_word_dpo 50.0 \
+  --weight_topic_word_reg 5.0 \
   --glove 'glove.6B.100d.txt' \
   --wete_beta 0.5 \
   --wete_epsilon 0.1 \
