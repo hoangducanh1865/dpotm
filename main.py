@@ -15,7 +15,7 @@ from models.ProdLDA import ProdLDA
 from models.WETE import WeTe
 from utils.llm import LLM
 from utils import config, log, miscellaneous, seed
-from utils.config import Config as cfg
+from utils.config import Config 
 from evaluations.evaluate import evaluate
 from utils.hpo import HPO
 from scipy import stats
@@ -63,7 +63,8 @@ if __name__ == "__main__":
 
     # load a preprocessed dataset
     dataset = datasethandler.BasicDatasetHandler(
-        os.path.join(DATA_DIR, args.dataset), device=args.device, read_labels=read_labels,
+        args=args,
+        dataset_dir=os.path.join(DATA_DIR, args.dataset), device=args.device, read_labels=read_labels,
         as_tensor=True, contextual_embed=True)
 
     # create a model
@@ -208,9 +209,9 @@ if __name__ == "__main__":
         args.weight_doc_topic_dpo=best_config['weight_doc_topic_dpo']
         args.weight_doc_topic_reg=best_config['weight_doc_topic_reg']
         args.finetune_epochs=best_config['finetune_epochs']
-        print(f'Best weight_doc_topic_dpo: {best_config['weight_doc_topic_dpo']}')
-        print(f'Best weight_doc_topic_reg: {best_config['weight_doc_topic_reg']}')
-        print(f'Best finetune_epochs: {best_config['finetune_epochs']}')
+        print(f'Best weight_doc_topic_dpo: {best_config["weight_doc_topic_dpo"]}')
+        print(f'Best weight_doc_topic_reg: {best_config["weight_doc_topic_reg"]}')
+        print(f'Best finetune_epochs: {best_config["finetune_epochs"]}')
         
     # LLM and Sentence Transformer models
     trainer.model.is_finetuning = True

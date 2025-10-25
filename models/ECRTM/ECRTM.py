@@ -6,9 +6,10 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from .ECR import ECR
-from utils.config import Config as cfg
+from utils.config import Config 
 from utils import static_utils
 from utils.llm import LLM
+from transformers import BertModel,BertConfig
 
 
 class ECRTM(nn.Module):
@@ -39,7 +40,7 @@ class ECRTM(nn.Module):
         self.is_finetuning = False
         self.finetune_beta = args.finetune_beta
         self.finetune_theta = args.finetune_theta
-        self.device = cfg.DEVICE
+        self.device = Config.DEVICE
         self.vocab = vocab
         self.vocab_size = vocab_size
         self.num_topics = num_topics
@@ -90,20 +91,29 @@ class ECRTM(nn.Module):
         self.mu2.requires_grad = False
         self.var2.requires_grad = False
 
-        self.fc11 = nn.Linear(vocab_size, en_units)
-        self.fc12 = nn.Linear(en_units, en_units)
-        self.fc21 = nn.Linear(en_units, num_topics)
-        self.fc22 = nn.Linear(en_units, num_topics)
-        self.fc1_dropout = nn.Dropout(dropout)
-        self.theta_dropout = nn.Dropout(dropout)
+        if args.use_bert_encoder:
+            self.encoder=PrefixBERTEncoder(vocab_size=vocab_size,
+                                           num_topics=num_topics,
+                                           bert_model_name=args.bert_model_name,
+                                           prefix_length=args.prefix_length,
+                                           freeze_bert=args.freeze_bert,
+                                           dropout=dropout)
+        else:
+            self.fc11 = nn.Linear(vocab_size, en_units)
+            self.fc12 = nn.Linear(en_units, en_units)
+            self.fc21 = nn.Linear(en_units, num_topics)
+            self.fc22 = nn.Linear(en_units, num_topics)
+            self.fc1_dropout = nn.Dropout(dropout)
 
-        self.mean_bn = nn.BatchNorm1d(num_topics)
-        self.mean_bn.weight.requires_grad = False
-        self.logvar_bn = nn.BatchNorm1d(num_topics)
-        self.logvar_bn.weight.requires_grad = False
+            self.mean_bn = nn.BatchNorm1d(num_topics)
+            self.mean_bn.weight.requires_grad = False
+            self.logvar_bn = nn.BatchNorm1d(num_topics)
+            self.logvar_bn.weight.requires_grad = False
+        
+        self.theta_dropout = nn.Dropout(dropout)
         self.decoder_bn = nn.BatchNorm1d(vocab_size, affine=True)
         self.decoder_bn.weight.requires_grad = False
-
+        
         if pretrained_WE is not None:
             self.word_embeddings = torch.from_numpy(pretrained_WE).float()
         else:
@@ -137,11 +147,15 @@ class ECRTM(nn.Module):
             return mu
 
     def encode(self, input):
-        e1 = F.softplus(self.fc11(input))
-        e1 = F.softplus(self.fc12(e1))
-        e1 = self.fc1_dropout(e1)
-        mu = self.mean_bn(self.fc21(e1))
-        logvar = self.logvar_bn(self.fc22(e1))
+        if self.args.use_bert_encoder:
+            mu,logvar=self.encoder(input_ids=input['input_ids'],
+                                   attention_mask=input['attention_mask'])
+        else:
+            e1 = F.softplus(self.fc11(input))
+            e1 = F.softplus(self.fc12(e1))
+            e1 = self.fc1_dropout(e1)
+            mu = self.mean_bn(self.fc21(e1))
+            logvar = self.logvar_bn(self.fc22(e1))
         z = self.reparameterize(mu, logvar)
         theta = F.softmax(z, dim=1)
 
@@ -152,7 +166,7 @@ class ECRTM(nn.Module):
     def get_theta(self, input):
         theta, loss_KL = self.encode(input)
         if self.training:
-            return theta, loss_KL
+            return self.theta_dropout(theta)
         else:
             return theta
 
@@ -683,7 +697,7 @@ class ECRTM(nn.Module):
 
     def forward(self, input, epoch, batch):
         bow = input["data"]
-        theta, loss_KL = self.encode(input["data"])
+        theta, loss_KL = self.encode(input)
         beta = self.get_beta()
 
         recon = F.softmax(self.decoder_bn(torch.matmul(theta, beta)), dim=-1)
@@ -755,3 +769,60 @@ class ECRTM(nn.Module):
                 }
 
         return rst_dict
+class PrefixBERTEncoder(nn.Module):
+    def __init__(self,vocab_size,num_topics,dropout,bert_model_name,prefix_length,freeze_bert):
+        super().__init__()
+        self.vocab_size=vocab_size
+        self.num_topics=num_topics
+        self.dropout=nn.Dropout(dropout)
+        self.bert_model_name=bert_model_name
+        self.prefix_length=prefix_length
+        self.freeze_bert=freeze_bert
+        self.bert=BertModel.from_pretrained(bert_model_name)
+        self.hidden_size=self.bert.config.hidden_size
+        if freeze_bert:
+            for param in self.bert.parameters():
+                param.requires_grad=False
+        self.prefix_tokens=nn.Parameter(
+            torch.randn(prefix_length,self.hidden_size)
+        )
+        self.fc_mu=nn.Linear(self.hidden_size,num_topics)
+        self.fc_logvar=nn.Linear(self.hidden_size,num_topics)
+        self.mean_bn=nn.BatchNorm1d(num_topics)
+        self.mean_bn.weight.requires_grad=False
+        self.logvar_bn=nn.BatchNorm1d(num_topics)
+        self.logvar_bn.weight.requires_grad=False
+    def forward(self,input_ids,attention_mask):
+        """
+
+        Args:
+            input_ids: shape is (batch_size, seq_len) - tokenized input
+            attention_mask: shape is (batch_size, seq_len) - attention mask
+        
+        Returns:
+            mu, logvar
+        """
+        batch_size=input_ids.size(0)
+        
+        # Expand prefix for batch
+        prefix_embeddings=self.prefix_tokens.unsqueeze(0).expand(batch_size,-1,-1) # Shape is (batch_size, prefix_length, hidden_size) 
+        
+        bert_outputs=self.bert(input_ids=input_ids,
+                               attention_mask=attention_mask,
+                               return_dict=True) # Get BERT embedding
+        
+        # @QUESTION 
+        # Use [CLS] token representation
+        cls_output=bert_outputs.last_hidden_state[:,0,:] # (batch_size, hidden_size)
+        
+        # @QUESTION
+        # Add prefix information to CLS token
+        prefix_mean=prefix_embeddings.mean(dim=1) # (batch_size, hidden_size) 
+        combined=cls_output+prefix_mean
+        combined=self.dropout(combined)
+        
+        mu=self.mean_bn(self.fc_mu(combined))
+        logvar=self.logvar_bn(self.fc_logvar(combined))
+        return mu,logvar
+        
+        

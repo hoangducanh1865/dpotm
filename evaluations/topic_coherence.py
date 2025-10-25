@@ -33,16 +33,11 @@ def TC_on_wikipedia(use_kaggle, use_colab, top_word_path, cv_type='C_V'):
     
     if use_kaggle:
         wiki_dir = '/kaggle/input/wikipedia/wikipedia_bd/'
-        os.system(
-        f"java -jar {os.path.join(jar_dir, 'pametto.jar')} {wiki_dir} {cv_type} {top_word_path} > tmp{random_number}.txt")
     elif use_colab:
         wiki_dir = '../wikipedia/wikipedia_bd/'
-        os.system(
-        f"java -jar {os.path.join(jar_dir, 'pametto.jar')} {wiki_dir} {cv_type} {top_word_path} > tmp{random_number}.txt")
     else:
-        wiki_dir = os.path.join(".", 'datasets')
-        os.system(
-        f"java -jar {os.path.join(jar_dir, 'pametto.jar')} {os.path.join(wiki_dir, 'wikipedia/wikipedia_bd/')} {cv_type} {top_word_path} > tmp{random_number}.txt")
+        wiki_dir = os.path.join('datasets','wikipedia','wikipedia_bd') + '/'
+    os.system(f"java -jar {os.path.join(jar_dir, 'pametto.jar')} {wiki_dir} {cv_type} {top_word_path} > tmp{random_number}.txt")
     
     cv_score = []
     with open(f"tmp{random_number}.txt", "r") as f:

@@ -122,6 +122,10 @@ def add_training_argument(parser):
     parser.add_argument("--num_docs_per_call", type=int, default=1)
     parser.add_argument('--run_hpo',type=int,default=0)
     parser.add_argument('--hpo_algorithm',type=str,default='random_search')
+    parser.add_argument('--use_bert_encoder',type=int,default=0,choices=[0,1])
+    parser.add_argument('--bert_model_name',type=str,default='bert-base-uncased')
+    parser.add_argument('--prefix_length',type=int,default=20)
+    parser.add_argument('--freeze_bert',type=int,default=0,choices=[0,1])
 
 
 def add_eval_argument(parser):

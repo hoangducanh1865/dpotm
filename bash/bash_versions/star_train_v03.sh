@@ -36,7 +36,7 @@ python main.py \
   --lr_step_size 150 \
   --finetune_beta 1 \
   --finetune_theta 1 \
-  --checkpoint_path 'data/output_models/star_model_v03/checkpoint_epoch_500.pth' \
+  --checkpoint_path 'data/output_models/star_model_v03/checkpoint_epoch_800.pth' \
   --loss_topic_word_dpo_calculation_method 'hard_positive' \
   --loss_topic_word_dpo_calculation_method 'multiply' \
   --loss_dpo_topic_word_type 'bradley_terry' \
