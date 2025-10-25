@@ -7,7 +7,7 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from openai import OpenAI
 from dotenv import load_dotenv
-from utils.config import Config as cfg 
+from utils.config import Config  
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
 
@@ -22,11 +22,11 @@ class LLM:
         self.theta_path = os.path.join(current_run_dir, 'train_theta.npy')
         self.train_text_path = os.path.join('datasets', args.dataset, 'train_texts.txt')
         self.vocab = vocab
-        self.model = cfg.LLM_MODEL
+        self.model = Config.LLM_MODEL
         self.llm = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        self.topic_word_system_prompt = cfg.TOPIC_WORD_SYSTEM_PROMPT
-        self.topic_description_system_prompt = cfg.TOPIC_DESCRIPTION_SYSTEM_PROMPT
-        self.hf_model_name = cfg.HF_MODEL
+        self.topic_word_system_prompt = Config.TOPIC_WORD_SYSTEM_PROMPT
+        self.topic_description_system_prompt = Config.TOPIC_DESCRIPTION_SYSTEM_PROMPT
+        self.hf_model_name = Config.HF_MODEL
         self.hf_model = None
         self.hf_tokenizer = None
         self.hf_token = os.getenv('HF_TOKEN')
@@ -148,7 +148,7 @@ class LLM:
                 top_5_topic_indices = np.argsort(theta[doc_idx])[-5:][::-1]
                 batch_docs.append({'doc_idx': doc_idx, 'doc_text': doc_text, 'top_5_topic_indices': top_5_topic_indices})
 
-            prompt = cfg.get_doc_topic_prompt(topic_descriptions_str, batch_docs)
+            prompt = Config.get_doc_topic_prompt(topic_descriptions_str, batch_docs)
             
             # Debug
             print(f'Prompt: {prompt}')

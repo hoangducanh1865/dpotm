@@ -4,6 +4,7 @@ import numpy as np
 import scipy.sparse
 import scipy.io
 from sentence_transformers import SentenceTransformer
+from transformers import BertTokenizer
 from . import file_utils
 import os
 
@@ -15,12 +16,16 @@ def load_contextual_embed(texts, device, model_name="all-mpnet-base-v2", show_pr
 
 
 class DatasetHandler(Dataset):
-    def __init__(self, data, contextual_embed=None):
+    def __init__(self, args, data, contextual_embed=None, texts=None):
+        self.args=args
         self.data = data
+        self.texts=texts
         self.contextual_embed = None
         if contextual_embed is not None:
             assert data.shape[0] == contextual_embed.shape[0], "Data and contextual embeddings should have the same number of samples"
             self.contextual_embed = contextual_embed
+        if args.use_bert_encoder:
+            self.tokenizer=BertTokenizer.from_pretrained(args.bert_model_name)
 
     def __len__(self):
         # Update this according to your data size
@@ -29,16 +34,24 @@ class DatasetHandler(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-
-        if self.contextual_embed is None:
-            return {
-                'data': self.data[idx]
-            }
-
-        return {
-            'data': self.data[idx],
-            'contextual_embed': self.contextual_embed[idx]
+        
+        item={
+            'data':self.data[idx],
+            'indices':idx
         }
+
+        if self.contextual_embed is not None:
+            item['contextual_embed']=self.contextual_embed[idx]
+
+        if self.args.use_bert_encoder:
+            encoding=self.tokenizer(self.texts[idx],
+                                    padding='max_length',
+                                    truncation=True,
+                                    max_length=512,
+                                    return_tensors='pt')
+            item['input_ids']=encoding['input_ids'].squeeze(0)
+            item['attention_mask']=encoding['attention_mask'].squeeze(0)
+        return item
 
 
 class RawDatasetHandler:
@@ -68,12 +81,12 @@ class RawDatasetHandler:
 
 
 class BasicDatasetHandler:
-    def __init__(self, dataset_dir, batch_size=200, read_labels=False, device='cpu', as_tensor=False, contextual_embed=False, plm_model="all-mpnet-base-v2"):
+    def __init__(self, args, dataset_dir, batch_size=200, read_labels=False, device='cpu', as_tensor=False, contextual_embed=False, plm_model="all-mpnet-base-v2"):
         # train_bow: NxV
         # test_bow: Nxv
         # word_emeddings: VxD
         # vocab: V, ordered by word id.
-
+        self.args=args
         self.load_data(dataset_dir, read_labels)
         self.vocab_size = len(self.vocab)
         self.plm_model = plm_model
@@ -122,9 +135,13 @@ class BasicDatasetHandler:
                     self.test_contextual_embed).to(device)
 
                 train_dataset = DatasetHandler(
-                    self.train_data, self.train_contextual_embed)
+                    args,
+                    self.train_data, self.train_contextual_embed,
+                    texts=self.train_texts)
                 test_dataset = DatasetHandler(
-                    self.test_data, self.test_contextual_embed)
+                    args,
+                    self.test_data, self.test_contextual_embed,
+                    texts=self.test_texts)
 
                 self.train_dataloader = DataLoader(
                     train_dataset, batch_size=batch_size, shuffle=True)
@@ -132,8 +149,12 @@ class BasicDatasetHandler:
                     test_dataset, batch_size=batch_size, shuffle=False)
 
             else:
-                train_dataset = DatasetHandler(self.train_data)
-                test_dataset = DatasetHandler(self.test_data)
+                train_dataset = DatasetHandler(args,
+                                               self.train_data,
+                                               texts=self.train_texts)
+                test_dataset = DatasetHandler(args,
+                                              self.test_data,
+                                              texts=self.train_texts)
 
                 self.train_dataloader = DataLoader(
                     train_dataset, batch_size=batch_size, shuffle=True)

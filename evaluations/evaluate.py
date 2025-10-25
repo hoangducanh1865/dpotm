@@ -72,10 +72,10 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
             res.append(top_words)
         return res 
     
-    IBRO_10 = evaluations.buubyyboo_dth(top_words=process_top_words(top_words_10), topk=10, weight=0.9)
-    IBRO_15 = evaluations.buubyyboo_dth(top_words=process_top_words(top_words_15), topk=15, weight=0.9)
-    print(f'IBRO_10: {IBRO_10:.4f}')
-    print(f'IBRO_15: {IBRO_15:.4f}')
+    IRBO_10 = evaluations.buubyyboo_dth(top_words=process_top_words(top_words_10), topk=10, weight=0.9)
+    IRBO_15 = evaluations.buubyyboo_dth(top_words=process_top_words(top_words_15), topk=15, weight=0.9)
+    print(f'IRBO_10: {IRBO_10:.4f}')
+    print(f'IRBO_15: {IRBO_15:.4f}')
 
     # evaluating clustering
     if read_labels:
@@ -83,10 +83,16 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
             test_theta, dataset.test_labels)
         print(f"NMI: ", clustering_results['NMI'])
         print(f'Purity: ', clustering_results['Purity'])
+        print(f'ARI', clustering_results['ARI'])
+        print(f'MIS', clustering_results['MIS'])
         wandb.log({"NMI": clustering_results['NMI']})
         wandb.log({"Purity": clustering_results['Purity']})
+        wandb.log({"ARI": clustering_results['ARI']})
+        wandb.log({"MIS": clustering_results['MIS']})
         logger.info(f"NMI: {clustering_results['NMI']}")
         logger.info(f"Purity: {clustering_results['Purity']}")
+        logger.info(f"ARI: {clustering_results['ARI']}")
+        logger.info(f"MIS: {clustering_results['MIS']}")
 
     # evaluate classification
     '''if read_labels:

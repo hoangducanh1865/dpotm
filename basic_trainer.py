@@ -67,7 +67,7 @@ class BasicTrainer:
     def fit_transform(self, dataset_handler, num_top_words=15, verbose=False):
         self.train(dataset_handler, verbose)
         top_words = self.export_top_words(dataset_handler.vocab, num_top_words)
-        train_theta = self.test(dataset_handler.train_data)
+        train_theta = self.test(dataset_handler.train_dataloader)
 
         return top_words, train_theta
 
@@ -148,7 +148,7 @@ class BasicTrainer:
             if epoch >= self.epochs and epoch % 100 == 0:
                 self.save_checkpoint(epoch)
 
-    def test(self, input_data):
+    '''def test(self, input_data):
         data_size = input_data.shape[0]
         theta = list()
         all_idx = torch.split(torch.arange(data_size), self.batch_size)
@@ -161,8 +161,16 @@ class BasicTrainer:
                 theta.extend(batch_theta.cpu().tolist())
 
         theta = np.asarray(theta)
+        return theta'''
+    def test(self,dataloader):
+        theta=list()
+        with torch.no_grad():
+            self.model.eval()
+            for batch_data in dataloader:
+                batch_theta=self.model.get_theta(batch_data)
+                theta.extend(batch_theta.cpu().tolist())
+        theta=np.asarray(theta)
         return theta
-
     def export_beta(self):
         beta = self.model.get_beta().detach().cpu().numpy()
         return beta
@@ -175,8 +183,8 @@ class BasicTrainer:
         return top_words, top_word_indices
 
     def export_theta(self, dataset_handler):
-        train_theta = self.test(dataset_handler.train_data)
-        test_theta = self.test(dataset_handler.test_data)
+        train_theta = self.test(dataset_handler.train_dataloader)
+        test_theta = self.test(dataset_handler.test_dataloader)
         return train_theta, test_theta
 
     def save_beta(self, dir_path):

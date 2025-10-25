@@ -20,6 +20,14 @@ def clustering_metric(labels, preds):
             'name': 'NMI',
             'method': metrics.cluster.normalized_mutual_info_score
         },
+        {
+            'name': 'ARI',
+            'method': metrics.adjusted_rand_score
+        },
+        {
+            'name': 'MIS',
+            'method': metrics.normalized_mutual_info_score
+        }
     ]
 
     results = dict()
