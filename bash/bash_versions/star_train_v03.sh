@@ -36,7 +36,7 @@ python main.py \
   --lr_step_size 150 \
   --finetune_beta 1 \
   --finetune_theta 1 \
-  --checkpoint_path 'data/output_models/star_model_v03/checkpoint_epoch_800.pth' \
+  --checkpoint_path 'data/output_models/star_model_v03/checkpoint_epoch_500.pth' \
   --loss_topic_word_dpo_calculation_method 'hard_positive' \
   --loss_topic_word_dpo_calculation_method 'multiply' \
   --loss_dpo_topic_word_type 'bradley_terry' \
@@ -45,4 +45,11 @@ python main.py \
   --topic_word_dataset_generate_method 'openai' \
   --doc_topic_dataset_generate_method 'openai' \
   --num_docs_per_call 10 \
+  --run_hpo 0 \
+  --hpo_algorithm 'asha' \
+  --use_bert_encoder 0 \
+  --bert_model_name 'bert-base-uncased' \
+  --prefix_length 20 \
+  --freeze_bert 1 \
+  --test 1 \
   --tune_SVM

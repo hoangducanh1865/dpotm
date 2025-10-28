@@ -9,12 +9,32 @@ def purity_score(y_true, y_pred):
     # return purity
     return np.sum(np.amax(contingency_matrix, axis=0)) / np.sum(contingency_matrix)
 
+def harmonic_purity(labels,preds):
+        contingency_matrix=metrics.cluster.contingency_matrix(labels_true=labels,labels_pred=preds)
+        precision = contingency_matrix / contingency_matrix.sum(axis=0).reshape(1, -1)
+        recall = contingency_matrix / contingency_matrix.sum(axis=1).reshape(-1, 1)
+        
+        # Handle division by zero: replace inf/nan with 0
+        precision = np.nan_to_num(precision)
+        recall = np.nan_to_num(recall)
+        
+        # Calculate F1, avoiding division by zero
+        with np.errstate(divide='ignore', invalid='ignore'):
+            f1 = 2 * (precision * recall) / (precision + recall)
+        f1 = np.nan_to_num(f1)
+        
+        harmonic_purity = (np.amax(f1, axis=1) * contingency_matrix.sum(axis=1)).sum() / contingency_matrix.sum()
+        return harmonic_purity
 
 def clustering_metric(labels, preds):
     metrics_func = [
         {
             'name': 'Purity',
             'method': purity_score
+        },
+        {
+            'name': 'Harmonic_Purity',
+            'method': harmonic_purity,
         },
         {
             'name': 'NMI',

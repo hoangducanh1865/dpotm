@@ -50,6 +50,8 @@ if __name__ == "__main__":
     
     logger = log.setup_logger(
         'main', os.path.join(current_run_dir, 'main.log'))
+    doc_topic_preference_dataset_generation_logger = log.setup_logger(
+        'main', os.path.join(current_run_dir, 'doc_topic_preference_dataset_generation.log'))
     wandb_api_key = os.getenv('WANDB_API_KEY')
     wandb.login(key=wandb_api_key)
     wandb.init(project=prj, config=args)
@@ -136,9 +138,12 @@ if __name__ == "__main__":
                                             checkpoint_dir=current_checkpoint_dir,
                                             dataset=dataset,
                                             current_run_dir=current_run_dir)
-
-    # train the 
-    
+    def evaluate_during_training(epoch):
+        tmp_train_theta = trainer.test(dataset.train_data)
+        tmp_test_theta = trainer.test(dataset.test_data)
+        evaluate(trainer, tmp_train_theta, tmp_test_theta, logger, read_labels, dataset, args, current_run_dir, suffix=f'epoch_{epoch}_')
+        
+    # train model
     if args.model == "FASTOPIC":
         train_simple_embedding, train_theta = trainer.train(dataset)
         # save beta, theta and top words
@@ -147,14 +152,11 @@ if __name__ == "__main__":
         train_theta = np.asarray(train_theta.cpu())
         test_theta = np.asarray(test_theta.cpu())
     else:
-        def evaluate_during_training(epoch):
-            train_theta_eval = trainer.test(dataset.train_data)
-            test_theta_eval = trainer.test(dataset.test_data)
-            evaluate(trainer, train_theta_eval, test_theta_eval, logger, read_labels, dataset, args, current_run_dir, suffix=f'epoch_{epoch}_')
-        
         if args.checkpoint_path:
+            print('Loading checkpoint...')
             start_epoch = trainer.load_checkpoint(args.checkpoint_path) 
         else:
+            print('Training model...')
             trainer.train(dataset, 1, args.epochs, evaluate_fn=evaluate_during_training)
             
         # save beta, theta and top words
@@ -215,16 +217,26 @@ if __name__ == "__main__":
         
     # LLM and Sentence Transformer models
     trainer.model.is_finetuning = True
-    trainer.llm = LLM(current_run_dir, args.num_top_words, dataset.vocab, args)
-    
+    trainer.llm = LLM(current_run_dir, args.num_top_words, dataset.vocab, args,doc_topic_preference_dataset_generation_logger)
+    if args.finetune_beta:
+        print('Generating topic-word preference dataset...')
+        trainer.llm.generate_topic_word_preference_dataset()
+        trainer.model.load_topic_word_preference_dataset()
+    if args.finetune_theta:
+        print('Generating topic descriptions...')
+        trainer.llm.generate_topic_descriptions()
+        print(f'Generating doc-topic preference dataset, with batch_size is {args.num_docs_per_call}...')
+        trainer.llm.generate_doc_topic_preference_dataset()  
+        trainer.model.load_doc_topic_preference_dataset()
     # Fine-tune model
     if args.checkpoint_path:
+        print('Fine-tuning model...')
         trainer.train(dataset, start_epoch, start_epoch - 1 + args.finetune_epochs, evaluate_fn=evaluate_during_training) 
     else:
+        print('Fine-tuning model...')
         trainer.train(dataset, args.epochs + 1, args.epochs + args.finetune_epochs, evaluate_fn=evaluate_during_training) 
     beta = trainer.save_beta(current_run_dir)
     train_theta, test_theta = trainer.save_theta(dataset, current_run_dir)
-    
     evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, args, current_run_dir, suffix='finetuned_')
     
     wandb.finish()

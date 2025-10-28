@@ -17,11 +17,11 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
     # test_theta_argmax = test_theta.argmax(axis=1) 
     train_theta_argmax = train_theta.argmax(axis=1)
     unique_elements, counts = np.unique(train_theta_argmax, return_counts=True)
-    print(f'train theta argmax: {unique_elements, counts}')
+    '''print(f'train theta argmax: {unique_elements, counts}')'''
     logger.info(f'train theta argmax: {unique_elements, counts}')
     test_theta_argmax = test_theta.argmax(axis=1)
     unique_elements, counts = np.unique(test_theta_argmax, return_counts=True)
-    print(f'test theta argmax: {unique_elements, counts}')
+    '''print(f'test theta argmax: {unique_elements, counts}')'''
     logger.info(f'test theta argmax: {unique_elements, counts}')       
 
     # TD_15 = evaluations.compute_topic_diversity(
@@ -83,27 +83,30 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
             test_theta, dataset.test_labels)
         print(f"NMI: ", clustering_results['NMI'])
         print(f'Purity: ', clustering_results['Purity'])
-        print(f'ARI', clustering_results['ARI'])
-        print(f'MIS', clustering_results['MIS'])
+        print(f'Harmonic Purity: ', clustering_results['Harmonic_Purity'])
+        print(f'ARI: ', clustering_results['ARI'])
+        print(f'MIS: ', clustering_results['MIS'])
         wandb.log({"NMI": clustering_results['NMI']})
         wandb.log({"Purity": clustering_results['Purity']})
+        wandb.log({"Harmonic Purity": clustering_results['Harmonic_Purity']})
         wandb.log({"ARI": clustering_results['ARI']})
         wandb.log({"MIS": clustering_results['MIS']})
         logger.info(f"NMI: {clustering_results['NMI']}")
         logger.info(f"Purity: {clustering_results['Purity']}")
+        logger.info(f"Harmonic_Purity: {clustering_results['Harmonic_Purity']}")
         logger.info(f"ARI: {clustering_results['ARI']}")
         logger.info(f"MIS: {clustering_results['MIS']}")
 
     # evaluate classification
-    '''if read_labels:
+    if read_labels:
         classification_results = evaluations.evaluate_classification(
-            train_theta, test_theta, dataset.train_labels, dataset.test_labels, tune=args.tune_SVM)
+            train_theta, test_theta, dataset.train_labels, dataset.test_labels, classifier=args.classifier, tune=args.tune_SVM)
         print(f"Accuracy: ", classification_results['acc'])
         wandb.log({"Accuracy": classification_results['acc']})
         logger.info(f"Accuracy: {classification_results['acc']}")
         print(f"Macro-f1", classification_results['macro-F1'])
         wandb.log({"Macro-f1": classification_results['macro-F1']})
-        logger.info(f"Macro-f1: {classification_results['macro-F1']}")'''
+        logger.info(f"Macro-f1: {classification_results['macro-F1']}")
 
     # TC
     TC_15_list, TC_15 = evaluations.topic_coherence.TC_on_wikipedia(
@@ -115,12 +118,12 @@ def evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, arg
     logger.info(f"TC_15: {TC_15:.5f}")
     logger.info(f'TC_15 list: {TC_15_list}')
 
-    # TC_10_list, TC_10 = topmost.evaluations.topic_coherence.TC_on_wikipedia(
-    #     os.path.join(current_run_dir, 'top_words_10.txt'))
-    # print(f"TC_10: {TC_10:.5f}")
-    # wandb.log({"TC_10": TC_10})
-    # logger.info(f"TC_10: {TC_10:.5f}")
-    # logger.info(f'TC_10 list: {TC_10_list}')
+    ''' TC_10_list, TC_10 = topmost.evaluations.topic_coherence.TC_on_wikipedia(
+        os.path.join(current_run_dir, 'top_words_10.txt'))
+    print(f"TC_10: {TC_10:.5f}")
+    wandb.log({"TC_10": TC_10})
+    logger.info(f"TC_10: {TC_10:.5f}")
+    logger.info(f'TC_10 list: {TC_10_list}')'''
 
     # NPMI
     '''NPMI_train_10_list, NPMI_train_10 = evaluations.compute_topic_coherence(

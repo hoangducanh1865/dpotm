@@ -51,4 +51,5 @@ python main.py \
   --bert_model_name 'bert-base-uncased' \
   --prefix_length 20 \
   --freeze_bert 1 \
+  --test 1 \
   --tune_SVM

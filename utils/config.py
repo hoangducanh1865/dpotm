@@ -126,10 +126,12 @@ def add_training_argument(parser):
     parser.add_argument('--bert_model_name',type=str,default='bert-base-uncased')
     parser.add_argument('--prefix_length',type=int,default=20)
     parser.add_argument('--freeze_bert',type=int,default=0,choices=[0,1])
+    parser.add_argument('--testing',type=int,default=0,choices=[0,1])
 
 
 def add_eval_argument(parser):
     parser.add_argument("--tune_SVM", action="store_true", default=False)
+    parser.add_argument('--classifier',type=str,default='SVM',choices=['SVM','GaussianNB','MultinomialNB'])
 
 
 def save_config(args, path):

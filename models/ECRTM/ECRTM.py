@@ -9,7 +9,7 @@ from .ECR import ECR
 from utils.config import Config 
 from utils import static_utils
 from utils.llm import LLM
-from transformers import BertModel,BertConfig
+from transformers import BertModel,BertConfig,DistilBertModel
 
 
 class ECRTM(nn.Module):
@@ -38,19 +38,16 @@ class ECRTM(nn.Module):
         super().__init__()
         self.args = args
         self.is_finetuning = False
-        self.finetune_beta = args.finetune_beta
-        self.finetune_theta = args.finetune_theta
         self.device = Config.DEVICE
         self.vocab = vocab
         self.vocab_size = vocab_size
         self.num_topics = num_topics
-        self.num_top_words = args.num_top_words
         self.beta_temp = beta_temp
         self.current_run_dir = current_run_dir
 
         self.beta_ref_path = None
         self.beta_ref = None
-        self.preference_dataset_path = None
+        self.topic_word_preference_dataset_path = None
         self.topic_word_preference_dataset = None
 
         self.theta_ref_path = None
@@ -58,21 +55,8 @@ class ECRTM(nn.Module):
         self.doc_topic_preference_dataset_path = None
         self.doc_topic_preference_dataset = None
 
-        self.weight_topic_word_dpo = args.weight_topic_word_dpo
-        self.weight_topic_word_reg = args.weight_topic_word_reg
-        self.weight_doc_topic_dpo = args.weight_doc_topic_dpo
-        self.weight_doc_topic_reg = args.weight_doc_topic_reg
-
-        # Methods to calculate DPO loss
-        self.loss_topic_word_dpo_calculation_method = (
-            args.loss_topic_word_dpo_calculation_method
-        )
-        self.use_jaccard = args.use_jaccard
-        self.loss_dpo_topic_word_type = args.loss_dpo_topic_word_type
-        self.loss_dpo_doc_topic_type = args.loss_dpo_doc_topic_type
-        self.count_drift_topics = 0
-
         # for Jaccard Overlap method
+        self.count_drift_topics = 0
         self.beta_prev = None
 
         self.a = 1 * np.ones((1, num_topics)).astype(np.float32)
@@ -148,7 +132,7 @@ class ECRTM(nn.Module):
 
     def encode(self, input):
         if self.args.use_bert_encoder:
-            mu,logvar=self.encoder(input_ids=input['input_ids'],
+            mu,logvar=self.encoder(input_ids=input,
                                    attention_mask=input['attention_mask'])
         else:
             e1 = F.softplus(self.fc11(input))
@@ -191,26 +175,26 @@ class ECRTM(nn.Module):
         return loss_ECR
 
     def load_topic_word_preference_dataset(self):
-        self.preference_dataset_path = os.path.join(
+        self.topic_word_preference_dataset_path = os.path.join(
             self.current_run_dir, "topic_word_preference_dataset.jsonl"
         )
         self.topic_word_preference_dataset = []
-        with open(self.preference_dataset_path, "r") as f:
+        with open(self.topic_word_preference_dataset_path, "r") as f:
             for line in f:
                 self.topic_word_preference_dataset.append(line)
 
-        print("Loaded topic-word preference dataset")
+        '''print("Loaded topic-word preference dataset")'''
 
     def load_doc_topic_preference_dataset(self):
         self.doc_topic_preference_dataset_path = os.path.join(
-            "data", "preference_dataset", "doc_topic_preference_dataset.jsonl"
+            "data", "doc_topic_preference_dataset", "doc_topic_preference_dataset.jsonl"
         )
         self.doc_topic_preference_dataset = []
         with open(self.doc_topic_preference_dataset_path, "r") as f:
             for line in f:
                 self.doc_topic_preference_dataset.append(line)
 
-        print("Loaded doc-topic preference dataset")
+        '''print("Loaded doc-topic preference dataset")'''
 
     def load_preference_beta(self):
         # Load reference beta and froze it
@@ -233,14 +217,14 @@ class ECRTM(nn.Module):
             self.load_preference_beta()
 
         # Create new preference dataset manually for robustness
-        if epoch % 100 == 1 and batch == 0:
+        """if epoch % 100 == 1 and batch == 0:
             self.load_topic_word_preference_dataset()
-            """self.weight_loss_ECR -= 150
+            self.weight_loss_ECR -= 150
             self.ECR = ECR(self.weight_loss_ECR, self.sinkhorn_alpha, self.sinkhorn_max_iter)"""
 
-        if self.loss_dpo_topic_word_type == "bradley_terry":
+        if self.args.loss_dpo_topic_word_type == "bradley_terry":
 
-            if self.use_jaccard == True:
+            if self.args.use_jaccard:
                 """
                 This loop check if at least one word in top-words has just drift, then create a new preference dataset.
                 """
@@ -256,10 +240,10 @@ class ECRTM(nn.Module):
                     # TODO
                     # Take current top word indices for k topics
                     _, top_word_indices_list_curr = static_utils.print_topic_words(
-                        beta_curr, self.vocab, self.num_top_words, False
+                        beta_curr, self.vocab, self.args.num_top_words, False
                     )
                     _, top_word_indices_list_prev = static_utils.print_topic_words(
-                        self.beta_prev, self.vocab, self.num_top_words, False
+                        self.beta_prev, self.vocab, self.args.num_top_words, False
                     )
 
                     # Check drifted topics
@@ -291,7 +275,7 @@ class ECRTM(nn.Module):
                             self.count_drift_topics = 0
                             llm = LLM(
                                 dir_path=self.current_run_dir,
-                                num_top_words=self.num_top_words,
+                                num_top_words=self.args.num_top_words,
                             )
                             llm.generate_topic_word_preference_dataset()
                             self.load_topic_word_preference_dataset()
@@ -302,7 +286,7 @@ class ECRTM(nn.Module):
             # Indices for preference dataset
             k_indices, w_plus_indices, w_minus_indices = [], [], []
 
-            if self.loss_topic_word_dpo_calculation_method == "multiply":
+            if self.args.loss_topic_word_dpo_calculation_method == "multiply":
 
                 for line in self.topic_word_preference_dataset:
                     data = json.loads(line)
@@ -314,7 +298,7 @@ class ECRTM(nn.Module):
                             w_plus_indices.append(w_plus_idx)
                             w_minus_indices.append(w_minus_idx)
 
-            elif self.loss_topic_word_dpo_calculation_method == "hard_negative":
+            elif self.args.loss_topic_word_dpo_calculation_method == "hard_negative":
                 """
                 We should use this block since in topic model, there are some cases where some stop words can pass the
                 data preprocessing phase, and they get very high beta score -> hard negative words.
@@ -344,7 +328,7 @@ class ECRTM(nn.Module):
                             w_plus_indices.append(w_plus_idx)
                             w_minus_indices.append(hardest_w_minus_idx)
 
-            elif self.loss_topic_word_dpo_calculation_method == "hard_positive":
+            elif self.args.loss_topic_word_dpo_calculation_method == "hard_positive":
                 for line in self.topic_word_preference_dataset:
                     data = json.loads(line)
                     k = data["k"]
@@ -370,7 +354,7 @@ class ECRTM(nn.Module):
                             w_plus_indices.append(hardest_w_plus_idx)
                             w_minus_indices.append(w_minus_idx)
 
-            elif self.loss_topic_word_dpo_calculation_method == "combined_hard":
+            elif self.args.loss_topic_word_dpo_calculation_method == "combined_hard":
                 for line in self.topic_word_preference_dataset:
                     data = json.loads(line)
                     k = data["k"]
@@ -441,7 +425,7 @@ class ECRTM(nn.Module):
 
             return loss_topic_word_dpo
 
-        elif self.loss_dpo_topic_word_type == "plackett_luce":
+        elif self.args.loss_dpo_topic_word_type == "plackett_luce":
             loss_topic_word_dpo = []
 
             for line in self.topic_word_preference_dataset:
@@ -450,9 +434,9 @@ class ECRTM(nn.Module):
                 w_indices = data["w_indices"]
 
                 loss_dpo_per_topic = torch.tensor(1.0, device=self.device)
-                for i in range(self.num_top_words):
+                for i in range(self.args.num_top_words):
                     denominator = torch.tensor(0.0, device=self.device)
-                    for j in range(i, self.num_top_words):
+                    for j in range(i, self.args.num_top_words):
                         delta = beta[k][w_indices[j]] - beta[k][w_indices[i]]
                         delta_ref = (
                             self.beta_ref[k][w_indices[j]]
@@ -478,8 +462,8 @@ class ECRTM(nn.Module):
             self.load_preference_theta()
 
         # Create new preference dataset manually for robustness
-        if epoch % 100 == 1 and batch == 0:
-            self.load_doc_topic_preference_dataset()
+        '''if epoch % 100 == 1 and batch == 0:
+            self.load_doc_topic_preference_dataset()'''
 
         # Collect all preference pairs
         all_pairs = []
@@ -517,7 +501,7 @@ class ECRTM(nn.Module):
             [],
         )
 
-        if self.loss_dpo_doc_topic_type == "bradley_terry":
+        if self.args.loss_dpo_doc_topic_type == "bradley_terry":
             """d_indices_batch, t_plus_indices, t_minus_indices = [], [], []
             d_indices_global = [] # For accessing theta_ref
 
@@ -618,7 +602,7 @@ class ECRTM(nn.Module):
 
             loss_doc_topic_dpo = -F.logsigmoid(deltas - deltas_ref).mean()
             return loss_doc_topic_dpo
-        elif self.loss_dpo_doc_topic_type == "plackett_luce":
+        elif self.args.loss_dpo_doc_topic_type == "plackett_luce":
             loss_topic_word_dpo = []
 
             batch_indices_set = set(batch_indices.cpu().numpy())
@@ -677,7 +661,7 @@ class ECRTM(nn.Module):
         else:
             raise NotImplementedError("Loss DPO type not supported")
 
-    def get_loss_regularization(self, beta):
+    def get_loss_topic_word_regularization(self, beta):
         """beta = self.get_beta()"""
         regularization_term = torch.mean((beta - self.beta_ref) ** 2)
         return regularization_term
@@ -697,7 +681,7 @@ class ECRTM(nn.Module):
 
     def forward(self, input, epoch, batch):
         bow = input["data"]
-        theta, loss_KL = self.encode(input)
+        theta, loss_KL = self.encode(bow if not self.args.use_bert_encoder else input['input_ids'])
         beta = self.get_beta()
 
         recon = F.softmax(self.decoder_bn(torch.matmul(theta, beta)), dim=-1)
@@ -714,16 +698,16 @@ class ECRTM(nn.Module):
 
         else:
             loss = loss_TM + loss_ECR
-            if self.finetune_beta:
+            if self.args.finetune_beta:
                 loss_topic_word_dpo = self.get_loss_topic_word_dpo(beta, epoch, batch)
-                loss_topic_word_reg = self.get_loss_regularization(beta)
+                loss_topic_word_reg = self.get_loss_topic_word_regularization(beta)
                 loss += (
-                    self.weight_topic_word_dpo * loss_topic_word_dpo + self.weight_topic_word_reg * loss_topic_word_reg
+                    self.args.weight_topic_word_dpo * loss_topic_word_dpo + self.args.weight_topic_word_reg * loss_topic_word_reg
                 )
 
             batch_indices = input["indices"]
 
-            if self.finetune_theta:
+            if self.args.finetune_theta:
                 loss_doc_topic_dpo = self.get_loss_doc_topic_dpo(
                     theta, epoch, batch, batch_indices
                 )
@@ -731,17 +715,17 @@ class ECRTM(nn.Module):
                     theta, batch_indices
                 )
                 loss += (
-                    self.weight_doc_topic_dpo * loss_doc_topic_dpo + self.weight_doc_topic_reg * loss_doc_topic_reg
+                    self.args.weight_doc_topic_dpo * loss_doc_topic_dpo + self.args.weight_doc_topic_reg * loss_doc_topic_reg
                 )
 
-            """if self.finetune_beta and self.finetune_theta:
+            """if self.args.finetune_beta and self.args.finetune_theta:
                 print(f'Epoch: {epoch} - Batch: {batch} - Loss TM: {loss_TM} - Loss ECR: {loss_ECR} - Loss topic-word DPO: {loss_topic_word_dpo} - Loss topic-word Reg: {loss_topic_word_reg} - Loss doc-topic DPO: {loss_doc_topic_dpo} - Loss doc-topic Reg: {loss_doc_topic_reg}')
-            elif self.finetune_beta:
+            elif self.args.finetune_beta:
                 print(f'Epoch: {epoch} - Batch: {batch} - Loss TM: {loss_TM} - Loss ECR: {loss_ECR} - Loss topic-word DPO: {loss_topic_word_dpo} - Loss topic-word Reg: {loss_topic_word_reg}')
-            elif self.finetune_theta:
+            elif self.args.finetune_theta:
                 print(f'Epoch: {epoch} - Batch: {batch} - Loss TM: {loss_TM} - Loss ECR: {loss_ECR} - Loss doc-topic DPO: {loss_doc_topic_dpo} - Loss doc-topic Reg: {loss_doc_topic_reg}')"""
 
-            if self.finetune_beta and self.finetune_theta:
+            if self.args.finetune_beta and self.args.finetune_theta:
                 rst_dict = {
                     "loss": loss,
                     "loss_TM": loss_TM,
@@ -751,7 +735,7 @@ class ECRTM(nn.Module):
                     "loss_doc_topic_dpo": loss_doc_topic_dpo,
                     "loss_doc_topic_reg": loss_doc_topic_reg
                 }
-            elif self.finetune_beta:
+            elif self.args.finetune_beta:
                 rst_dict = {
                     "loss": loss,
                     "loss_TM": loss_TM,
@@ -759,7 +743,7 @@ class ECRTM(nn.Module):
                     "loss_topic_word_dpo": loss_topic_word_dpo,
                     "loss_topic_word_reg": loss_topic_word_reg
                 }
-            elif self.finetune_theta:
+            elif self.args.finetune_theta:
                 rst_dict = {
                     "loss": loss,
                     "loss_TM": loss_TM,
@@ -778,7 +762,10 @@ class PrefixBERTEncoder(nn.Module):
         self.bert_model_name=bert_model_name
         self.prefix_length=prefix_length
         self.freeze_bert=freeze_bert
-        self.bert=BertModel.from_pretrained(bert_model_name)
+        if 'distilbert' in bert_model_name.lower():
+            self.bert=DistilBertModel.from_pretrained(bert_model_name)
+        else:
+            self.bert=BertModel.from_pretrained(bert_model_name)
         self.hidden_size=self.bert.config.hidden_size
         if freeze_bert:
             for param in self.bert.parameters():

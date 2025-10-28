@@ -67,7 +67,7 @@ class BasicTrainer:
     def fit_transform(self, dataset_handler, num_top_words=15, verbose=False):
         self.train(dataset_handler, verbose)
         top_words = self.export_top_words(dataset_handler.vocab, num_top_words)
-        train_theta = self.test(dataset_handler.train_dataloader)
+        train_theta = self.test(dataset_handler.train_data if not self.args.use_bert_encoder else dataset_handler.train_dataloader)
 
         return top_words, train_theta
 
@@ -86,31 +86,22 @@ class BasicTrainer:
             loss_rst_dict = defaultdict(float)
             # wandb.log({'epoch': epoch})
 
-            if self.model.is_finetuning:
-                # Dynamic DPO weight adjustment, update preference beta and theta
-                if epoch % 100 == 1:
-                    '''self.model.weight_topic_word_dpo -= (1.0 if self.model.weight_topic_word_dpo >= 1.0 else 0.0)'''
-                    self.reload_theta_and_top_words_files()
-                    if self.finetune_beta:
-                        self.llm.generate_topic_word_preference_dataset()
-                    if self.finetune_theta:
-                        self.llm.generate_topic_descriptions()
-                        self.llm.generate_doc_topic_preference_dataset()  # This function will just be called ONE time
-
             for batch, batch_data in enumerate(dataset_handler.train_dataloader):
-                batch_size = len(batch_data["data"])
+                '''batch_size = len(batch_data["data"])
 
                 start_idx = batch * dataset_handler.train_dataloader.batch_size
                 actual_batch_size = min(batch_size, data_size - start_idx)
                 end_idx = start_idx + actual_batch_size
 
                 batch_indices = torch.arange(start_idx, end_idx, device=self.device)
-                batch_data["indices"] = batch_indices
-
-                rst_dict = self.model(batch_data, epoch, batch)
-                batch_loss = rst_dict["loss"]
+                batch_data["indices"] = batch_indices'''
+                for key in batch_data:
+                    if isinstance(batch_data[key],torch.Tensor):
+                        batch_data[key]=batch_data[key].to(self.device)
 
                 self.optimizer.zero_grad()
+                rst_dict = self.model(batch_data, epoch, batch)
+                batch_loss = rst_dict["loss"]
                 batch_loss.backward()
                 # torch.nn.utils.clip_grad_norm_(self.model.parameters(), True)
                 self.optimizer.step()
@@ -134,10 +125,9 @@ class BasicTrainer:
                 print(output_log)
                 self.logger.info(output_log)
 
-            # Evaluate at every 100 epochs during fine-tuning phase
+            # Evaluate model every 100 epochs during fine-tuning phase and do not evaluate at the end of fine-tuning phase since we will evaluate in main
             if (
-                evaluate_fn
-                and epoch > self.args.epochs
+                epoch > self.args.epochs
                 and epoch % 100 == 0
                 and epoch != (self.args.epochs + self.args.finetune_epochs)
             ):
@@ -148,28 +138,32 @@ class BasicTrainer:
             if epoch >= self.epochs and epoch % 100 == 0:
                 self.save_checkpoint(epoch)
 
-    '''def test(self, input_data):
-        data_size = input_data.shape[0]
+    def test(self,input_data):
         theta = list()
-        all_idx = torch.split(torch.arange(data_size), self.batch_size)
+        
+        if self.args.use_bert_encoder:
+            with torch.no_grad():
+                self.model.eval()
+                for batch_data in input_data:
+                    # Move all tensors in batch_data to the correct device
+                    for key in batch_data:
+                        if isinstance(batch_data[key], torch.Tensor):
+                            batch_data[key] = batch_data[key].to(self.device)
+                    
+                    batch_theta = self.model.get_theta(batch_data)
+                    theta.extend(batch_theta.cpu().tolist())
+        else:
+            data_size = input_data.shape[0]
+            all_idx = torch.split(torch.arange(data_size), self.batch_size)
 
-        with torch.no_grad():
-            self.model.eval()
-            for idx in all_idx:
-                batch_input = input_data[idx]
-                batch_theta = self.model.get_theta(batch_input)
-                theta.extend(batch_theta.cpu().tolist())
+            with torch.no_grad():
+                self.model.eval()
+                for idx in all_idx:
+                    batch_input = input_data[idx]
+                    batch_theta = self.model.get_theta(batch_input)
+                    theta.extend(batch_theta.cpu().tolist())
 
         theta = np.asarray(theta)
-        return theta'''
-    def test(self,dataloader):
-        theta=list()
-        with torch.no_grad():
-            self.model.eval()
-            for batch_data in dataloader:
-                batch_theta=self.model.get_theta(batch_data)
-                theta.extend(batch_theta.cpu().tolist())
-        theta=np.asarray(theta)
         return theta
     def export_beta(self):
         beta = self.model.get_beta().detach().cpu().numpy()
@@ -183,8 +177,8 @@ class BasicTrainer:
         return top_words, top_word_indices
 
     def export_theta(self, dataset_handler):
-        train_theta = self.test(dataset_handler.train_dataloader)
-        test_theta = self.test(dataset_handler.test_dataloader)
+        train_theta = self.test(dataset_handler.train_data if not self.args.use_bert_encoder else dataset_handler.train_dataloader)
+        test_theta = self.test(dataset_handler.test_data if not self.args.use_bert_encoder else dataset_handler.test_dataloader)
         return train_theta, test_theta
 
     def save_beta(self, dir_path):
@@ -193,7 +187,7 @@ class BasicTrainer:
         return beta
 
     def save_top_words(
-        self, vocab, num_top_words, dir_path, suffix="", print_topic=True
+        self, vocab, num_top_words, dir_path, suffix="", print_topic=False
     ):
         top_words, top_word_indices = self.export_top_words(
             vocab, num_top_words, print_topic
@@ -304,22 +298,6 @@ class BasicTrainer:
         )
 
         return start_epoch
-
-    def reload_theta_and_top_words_files(self):
-        train_theta, test_theta = self.save_theta(self.dataset, self.current_run_dir, log_theta_predictions=False)
-        top_words_10 = self.save_top_words(
-            self.dataset.vocab, 10, self.current_run_dir, print_topic=False
-        )
-        top_words_15 = self.save_top_words(
-            self.dataset.vocab, 15, self.current_run_dir, print_topic=False
-        )
-        top_words_20 = self.save_top_words(
-            self.dataset.vocab, 20, self.current_run_dir, print_topic=False
-        )
-        top_words_25 = self.save_top_words(
-            self.dataset.vocab, 25, self.current_run_dir, print_topic=False
-        )
-
 
 class FastBasicTrainer:
     def __init__(
