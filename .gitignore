@@ -219,3 +219,6 @@ datasets/wikipedia/*
 !wandb/
 wandb/*
 !wandb/.gitkeep
+!wandb/.gitkeep
+**/._.DS_Store
+._*
