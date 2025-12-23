@@ -7,12 +7,6 @@ import scipy
 import wandb
 from dotenv import load_dotenv
 from models.ECRTM.ECRTM import ECRTM
-from models.FASTOPIC.FASTOPIC import FASTOPIC
-from models.NSTM.NSTM import NSTM
-from models.CTM import CTM
-from models.ETM import ETM
-from models.ProdLDA import ProdLDA
-from models.WETE import WeTe
 from utils.llm import LLM
 from utils import config, log, miscellaneous, seed
 from utils.config import Config 
@@ -74,94 +68,42 @@ if __name__ == "__main__":
         DATA_DIR, args.dataset, "word_embeddings.npz")).toarray()
 
 
-    if args.model == "ECRTM":
-        model = ECRTM(args,
-                      vocab = dataset.vocab,
-                      vocab_size=dataset.vocab_size, 
-                      num_topics=args.num_topics, 
-                      dropout=args.dropout, 
-                      pretrained_WE=pretrainWE if args.use_pretrainWE else None, 
-                      weight_loss_ECR=args.weight_ECR,
-                      current_run_dir=current_run_dir)
-    elif args.model == "FASTOPIC":
-        model = FASTOPIC(vocab_size=dataset.vocab_size, num_topics=args.num_topics)
-    elif args.model == "NSTM":
-        model = NSTM(vocab_size=dataset.vocab_size, num_topics=args.num_topics,
-                     pretrained_WE=pretrainWE if args.use_pretrainWE else None)
-    elif args.model == "CTM":
-        model = CTM(vocab_size=dataset.vocab_size,
-                    contextual_emb_size=dataset.contextual_embed_size,
-                    num_topics=args.num_topics,
-                    dropout=args.dropout)
-    elif args.model == "ETM":
-        model = ETM(vocab_size=dataset.vocab_size, 
-                    num_topics=args.num_topics,
+    model = ECRTM(args,
+                    vocab = dataset.vocab,
+                    vocab_size=dataset.vocab_size, 
+                    num_topics=args.num_topics, 
+                    dropout=args.dropout, 
                     pretrained_WE=pretrainWE if args.use_pretrainWE else None, 
-                    train_WE=True)
-    elif args.model == "ProdLDA":
-        model = ProdLDA(vocab_size=dataset.vocab_size, 
-                    num_topics=args.num_topics,
-                    dropout=args.dropout)
-    elif args.model == "WeTe":
-        model = WeTe(vocab_size=dataset.vocab_size, vocab=dataset.vocab, num_topics=args.num_topics,device=args.device)
-    model = model.to(args.device)
+                    weight_loss_ECR=args.weight_ECR,
+                    current_run_dir=current_run_dir)
 
     # create a trainer
-    if args.model == "FASTOPIC":
-        trainer = basic_trainer.FastBasicTrainer(model, epochs=args.epochs,
-                                            learning_rate=args.lr,
-                                            batch_size=args.batch_size,
-                                            lr_scheduler=args.lr_scheduler,
-                                            lr_step_size=args.lr_step_size,
-                                            device=args.device)
-    elif args.model == "WeTe":
-        trainer = basic_trainer.WeteBasicTrainer(model,epochs=args.epochs,
-                                            learning_rate=args.lr,
-                                            batch_size=args.batch_size,
-                                            lr_scheduler=args.lr_scheduler,
-                                            lr_step_size=args.lr_step_size,
-                                            device=args.device)
-    elif args.model == "CTM":
-        trainer = basic_trainer.CTMBasicTrainer(model, epochs=args.epochs,
-                                            learning_rate=args.lr,
-                                            batch_size=args.batch_size,
-                                            lr_scheduler=args.lr_scheduler,
-                                            lr_step_size=args.lr_step_size)
-    else:
-        trainer = basic_trainer.BasicTrainer(model, epochs=args.epochs,
-                                            learning_rate=args.lr,
-                                            batch_size=args.batch_size,
-                                            use_lr_scheduler=args.lr_scheduler,
-                                            lr_step_size=args.lr_step_size,
-                                            device=args.device,
-                                            args=args,
-                                            checkpoint_dir=current_checkpoint_dir,
-                                            dataset=dataset,
-                                            current_run_dir=current_run_dir)
+    trainer = basic_trainer.BasicTrainer(model, epochs=args.epochs,
+                                        learning_rate=args.lr,
+                                        batch_size=args.batch_size,
+                                        use_lr_scheduler=args.lr_scheduler,
+                                        lr_step_size=args.lr_step_size,
+                                        device=args.device,
+                                        args=args,
+                                        checkpoint_dir=current_checkpoint_dir,
+                                        dataset=dataset,
+                                        current_run_dir=current_run_dir)
     def evaluate_during_training(epoch):
         tmp_train_theta = trainer.test(dataset.train_data)
         tmp_test_theta = trainer.test(dataset.test_data)
         evaluate(trainer, tmp_train_theta, tmp_test_theta, logger, read_labels, dataset, args, current_run_dir, suffix=f'epoch_{epoch}_')
         
     # train model
-    if args.model == "FASTOPIC":
-        train_simple_embedding, train_theta = trainer.train(dataset)
-        # save beta, theta and top words
-        beta = trainer.save_beta(current_run_dir)
-        test_theta = trainer.model.get_theta(dataset.test_contextual_embed, train_simple_embedding)
-        train_theta = np.asarray(train_theta.cpu())
-        test_theta = np.asarray(test_theta.cpu())
+    if args.checkpoint_path:
+        print('Loading checkpoint...')
+        start_epoch = trainer.load_checkpoint(args.checkpoint_path) 
     else:
-        if args.checkpoint_path:
-            print('Loading checkpoint...')
-            start_epoch = trainer.load_checkpoint(args.checkpoint_path) 
-        else:
-            print('Training model...')
-            trainer.train(dataset, 1, args.epochs, evaluate_fn=evaluate_during_training)
-            
-        # save beta, theta and top words
-        beta = trainer.save_beta(current_run_dir)
-        train_theta, test_theta = trainer.save_theta(dataset, current_run_dir)
+        print('Training model...')
+        trainer.train(dataset, 1, args.epochs, evaluate_fn=evaluate_during_training)
+        
+    # save beta, theta and top words
+    beta = trainer.save_beta(current_run_dir)
+    train_theta, test_theta = trainer.save_theta(dataset, current_run_dir)
     
     evaluate(trainer, train_theta, test_theta, logger, read_labels, dataset, args, current_run_dir)
 

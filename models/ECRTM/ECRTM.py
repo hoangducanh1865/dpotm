@@ -76,12 +76,13 @@ class ECRTM(nn.Module):
         self.var2.requires_grad = False
 
         if args.use_bert_encoder:
-            self.encoder=PrefixBERTEncoder(vocab_size=vocab_size,
+            '''self.encoder=PrefixBERTEncoder(vocab_size=vocab_size,
                                            num_topics=num_topics,
                                            bert_model_name=args.bert_model_name,
                                            prefix_length=args.prefix_length,
                                            freeze_bert=args.freeze_bert,
-                                           dropout=dropout)
+                                           dropout=dropout)'''
+            pass
         else:
             self.fc11 = nn.Linear(vocab_size, en_units)
             self.fc12 = nn.Linear(en_units, en_units)
@@ -753,7 +754,9 @@ class ECRTM(nn.Module):
                 }
 
         return rst_dict
-class PrefixBERTEncoder(nn.Module):
+    
+    
+'''class PrefixBERTEncoder(nn.Module):
     def __init__(self,vocab_size,num_topics,dropout,bert_model_name,prefix_length,freeze_bert):
         super().__init__()
         self.vocab_size=vocab_size
@@ -810,6 +813,6 @@ class PrefixBERTEncoder(nn.Module):
         
         mu=self.mean_bn(self.fc_mu(combined))
         logvar=self.logvar_bn(self.fc_logvar(combined))
-        return mu,logvar
+        return mu,logvar'''
         
         

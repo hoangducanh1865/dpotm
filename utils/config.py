@@ -20,7 +20,7 @@ def add_logging_argument(parser):
 
 
 def add_model_argument(parser):
-    parser.add_argument("--model", type=str, default="ECRTM")  # ['ECRTM']
+    parser.add_argument("--model", type=str, default="ECRTM")
     parser.add_argument("--num_topics", type=int, default=50)
     parser.add_argument("--num_top_words", type=int, default=20)
     parser.add_argument("--num_groups", type=int, default=20)
@@ -120,18 +120,23 @@ def add_training_argument(parser):
         "--doc_topic_dataset_generate_method", type=str, default="hf"
     )  # ['openai', 'hf']
     parser.add_argument("--num_docs_per_call", type=int, default=1)
-    parser.add_argument('--run_hpo',type=int,default=0)
-    parser.add_argument('--hpo_algorithm',type=str,default='random_search')
-    parser.add_argument('--use_bert_encoder',type=int,default=0,choices=[0,1])
-    parser.add_argument('--bert_model_name',type=str,default='bert-base-uncased')
-    parser.add_argument('--prefix_length',type=int,default=20)
-    parser.add_argument('--freeze_bert',type=int,default=0,choices=[0,1])
-    parser.add_argument('--testing',type=int,default=0,choices=[0,1])
+    parser.add_argument("--run_hpo", type=int, default=0)
+    parser.add_argument("--hpo_algorithm", type=str, default="random_search")
+    parser.add_argument("--use_bert_encoder", type=int, default=0, choices=[0, 1])
+    parser.add_argument("--bert_model_name", type=str, default="bert-base-uncased")
+    parser.add_argument("--prefix_length", type=int, default=20)
+    parser.add_argument("--freeze_bert", type=int, default=0, choices=[0, 1])
+    parser.add_argument("--testing", type=int, default=0, choices=[0, 1])
 
 
 def add_eval_argument(parser):
     parser.add_argument("--tune_SVM", action="store_true", default=False)
-    parser.add_argument('--classifier',type=str,default='SVM',choices=['SVM','GaussianNB','MultinomialNB'])
+    parser.add_argument(
+        "--classifier",
+        type=str,
+        default="SVM",
+        choices=["SVM", "GaussianNB", "MultinomialNB"],
+    )
 
 
 def save_config(args, path):
